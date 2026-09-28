@@ -136,6 +136,11 @@ class TestDetection(unittest.TestCase):
 class TestProductIcon(unittest.TestCase):
     def test_forever_icon_bundled(self):
         from umbral import exeicon
+        # El logo de WoW Forever no se publica en el repositorio (marca de Blizzard):
+        # si falta, no hay icono incluido y se usa el extraído del propio juego.
+        if not (exeicon.ASSETS / "wow-forever.png").exists():
+            self.assertIsNone(exeicon.product_icon("wow_classic_beta"))
+            return
         self.assertEqual(exeicon.product_icon("wow_classic_beta").name, "wow-forever.png")
         self.assertEqual(exeicon.product_icon("wow_forever").name, "wow-forever.png")
         self.assertIsNone(exeicon.product_icon("w3"))
