@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Umbral
+GenericName=Lanzador de Battle.net
+Comment=Instala y lanza Battle.net y World of Warcraft con Proton
+Exec=umbral
+Icon=dev.madky.Umbral
+Terminal=false
+Categories=Game;
+Keywords=battle.net;blizzard;wow;warcraft;proton;wine;
+StartupWMClass=dev.madky.Umbral
+StartupNotify=true

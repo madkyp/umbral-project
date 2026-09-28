@@ -1,0 +1,3 @@
+00:02.0 VGA compatible controller [0300]: Intel Corporation Meteor Lake-P [Intel Arc Graphics] [8086:7d55] (rev 08)
+	Kernel driver in use: xe
+	Kernel modules: i915, xe

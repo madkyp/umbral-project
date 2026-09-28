@@ -1,0 +1,8 @@
+0000:00:02.0 VGA compatible controller [0300]: Intel Corporation Alder Lake-P GT2 [Iris Xe Graphics] [8086:46a6] (rev 0c)
+	Subsystem: Lenovo Device [17aa:3b2e]
+	Kernel driver in use: i915
+	Kernel modules: i915, xe
+0000:01:00.0 3D controller [0302]: NVIDIA Corporation GA107M [GeForce RTX 3050 Mobile] [10de:25a2] (rev a1)
+	Subsystem: Lenovo Device [17aa:3b2e]
+	Kernel driver in use: nvidia
+	Kernel modules: nouveau, nvidia_drm, nvidia

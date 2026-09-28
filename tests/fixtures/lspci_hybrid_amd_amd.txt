@@ -1,0 +1,6 @@
+0000:03:00.0 Display controller [0380]: Advanced Micro Devices, Inc. [AMD/ATI] Navi 33 [Radeon RX 7600/7600 XT/7600M XT/7600S/7700S / PRO W7600] [1002:7480] (rev c1)
+	Kernel driver in use: amdgpu
+	Kernel modules: amdgpu
+0000:65:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Phoenix1 [1002:15bf] (rev c1)
+	Kernel driver in use: amdgpu
+	Kernel modules: amdgpu

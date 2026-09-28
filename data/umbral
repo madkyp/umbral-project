@@ -1,0 +1,2 @@
+#!/bin/sh
+PYTHONPATH=/usr/lib/umbral${PYTHONPATH:+:$PYTHONPATH} exec /usr/bin/python3 -m umbral "$@"

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+pkg/
+src/
+*.pkg.tar.zst
+.ruff_cache/
+umbral/assets/wow-forever.png

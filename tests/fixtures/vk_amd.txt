@@ -1,0 +1,22 @@
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.318
+	driverVersion      = 25.1.4
+	vendorID           = 0x1002
+	deviceID           = 0x744c
+	deviceType         = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+	deviceName         = AMD Radeon RX 7900 XTX (RADV NAVI31)
+	driverID           = DRIVER_ID_MESA_RADV
+	driverName         = radv
+	driverInfo         = Mesa 25.1.4-arch1.1
+GPU1:
+	apiVersion         = 1.4.318
+	driverVersion      = 0.0.1
+	vendorID           = 0x10005
+	deviceID           = 0x0000
+	deviceType         = PHYSICAL_DEVICE_TYPE_CPU
+	deviceName         = llvmpipe (LLVM 20.1.8, 256 bits)
+	driverID           = DRIVER_ID_MESA_LLVMPIPE
+	driverName         = llvmpipe
+	driverInfo         = Mesa 25.1.4-arch1.1 (LLVM 20.1.8)

@@ -1,0 +1,4 @@
+0000:01:00.0 VGA compatible controller [0300]: NVIDIA Corporation TU106 [GeForce RTX 2070 Rev. A] [10de:1f07] (rev a1)
+	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:3732]
+	Kernel driver in use: nvidia
+	Kernel modules: nouveau, nvidia_drm, nvidia

@@ -1,0 +1,16 @@
+Devices:
+========
+GPU0:
+	vendorID           = 0x1002
+	deviceID           = 0x15bf
+	deviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+	deviceName         = AMD Radeon 780M (RADV PHOENIX)
+	driverName         = radv
+	driverInfo         = Mesa 25.1.4
+GPU1:
+	vendorID           = 0x1002
+	deviceID           = 0x7480
+	deviceType         = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+	deviceName         = AMD Radeon RX 7700S (RADV NAVI33)
+	driverName         = radv
+	driverInfo         = Mesa 25.1.4

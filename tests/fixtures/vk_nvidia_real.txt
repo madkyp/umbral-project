@@ -1,0 +1,13 @@
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.351
+	driverVersion      = 615.71.9.0
+	vendorID           = 0x10de
+	deviceID           = 0x1f07
+	deviceType         = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+	deviceName         = NVIDIA GeForce RTX 2070
+	driverID           = DRIVER_ID_NVIDIA_PROPRIETARY
+	driverName         = NVIDIA
+	driverInfo         = 615.71.09
+	conformanceVersion = 1.4.3.3
