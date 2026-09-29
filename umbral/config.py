@@ -83,6 +83,8 @@ class Game:
     hidden: bool = False
     cover: str = ""           # imagen elegida por el usuario (copia en ~/.local/share/umbral/covers)
     icon: str = ""            # icono elegido por el usuario (sustituye al extraído del .exe)
+    playtime: int = 0         # segundos jugados en total
+    last_played: str = ""     # ISO 8601 de la última partida
 
     @classmethod
     def from_dict(cls, d: dict) -> "Game":

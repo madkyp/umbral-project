@@ -129,8 +129,17 @@ class GameSettings(Adw.PreferencesDialog):
             row.add_suffix(pick)
             self._look_rows[field] = (row, clear, empty)
             lg.add(row)
+        sg = Adw.ActionRow(use_markup=False, title=_("Buscar en SteamGridDB…"), activatable=True,
+                           subtitle=_("Portadas y logos de la comunidad (steamgriddb.com)"))
+        sg.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        sg.connect("activated", lambda *_a: self._open_sgdb())
+        lg.add(sg)
         self._refresh_look()
         return lg
+
+    def _open_sgdb(self):
+        from .sgdb_picker import SGDBPicker
+        SGDBPicker(self.ctl, self.game.id, on_done=self._refresh_look).present(self)
 
     def _refresh_look(self):
         for field, (row, clear, empty) in self._look_rows.items():

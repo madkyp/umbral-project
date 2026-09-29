@@ -111,6 +111,7 @@ class UmbralApp(Adw.Application):
             if d.is_dir():
                 icons.add_search_path(str(d))
         self.ctl = Controller(debug=debug)
+        self.connect("shutdown", lambda *_a: self.ctl.flush_playtime())
         self.set_accent(self.ctl.cfg.settings.accent)
         self._start_tray()
         self.ctl.refresh_system()

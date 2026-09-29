@@ -112,6 +112,22 @@ class SystemPage(Adw.PreferencesPage):
         ap.add(lang)
         self._static_look = ap
 
+        from .. import sgdb
+        sg = Adw.PreferencesGroup(title="SteamGridDB",
+                                  description=_("Carátulas automáticas al añadir juegos y galería para elegir "
+                                                "portadas y logos. La clave (gratuita, en steamgriddb.com → "
+                                                "Preferencias → API) se guarda solo en este equipo."))
+        key_row = Adw.PasswordEntryRow(title=_("Clave de la API"), show_apply_button=True)
+        key_row.set_text(sgdb.get_key())
+
+        def on_key(row):
+            sgdb.set_key(row.get_text())
+            self.get_root().toasts.add_toast(Adw.Toast(title=_("Clave de SteamGridDB guardada") if row.get_text().strip()
+                                                       else _("Clave de SteamGridDB borrada")))
+        key_row.connect("apply", on_key)
+        sg.add(key_row)
+        self._static_sgdb = sg
+
         pg = Adw.PreferencesGroup(title=_('Rutas'))
         for title, p in ((_("Configuración"), paths.CONFIG_FILE), (_("Registros"), paths.LOG_DIR),
                          (_('Runners descargados'), paths.RUNNER_INSTALL_DIR),
@@ -141,13 +157,13 @@ class SystemPage(Adw.PreferencesPage):
 
     # ---------------------------------------------------------------- dinámico
     def rebuild(self):
-        for g in self._dynamic + [self._static_hypr, self._static_look, self._static_paths]:
+        for g in self._dynamic + [self._static_hypr, self._static_look, self._static_sgdb, self._static_paths]:
             if g.get_parent():
                 self.remove(g)
         self._dynamic = [self._gpu_group(), self._runner_group()]
         for g in self._dynamic:
             self.add(g)
-        for g in (self._static_hypr, self._static_look, self._static_paths):
+        for g in (self._static_hypr, self._static_look, self._static_sgdb, self._static_paths):
             self.add(g)
 
     def _gpu_group(self) -> Adw.PreferencesGroup:

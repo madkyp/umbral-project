@@ -16,7 +16,7 @@ from collections.abc import Callable
 
 from gi.repository import GLib
 
-from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, updates, wowconfig
+from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, sgdb, updates, wowconfig
 from .config import BATTLENET_ID, Config, Game, Prefix
 from .launcher import GameProcess, State, build, kill_wineserver
 from .i18n import _
@@ -37,6 +37,8 @@ class Controller:
         self._icon_jobs: set[str] = set()
         self.checking: set[str] = set()   # juegos comprobando versión
         self.moving: set[str] = set()     # juegos cuyos archivos se están moviendo
+        self._sessions: dict[str, float] = {}   # juego -> instante desde el que falta sumar tiempo
+        GLib.timeout_add_seconds(60, self._tick_playtime)
         self.logs: dict[str, list[str]] = {}
         self._listeners: list[Callable[..., None]] = []
 
@@ -205,6 +207,10 @@ class Controller:
                     found.add(wanted[name])
         found -= {k for k, p in self.procs.items() if p.running()}
         changed = found != self.external
+        for gid in found - self.external:
+            self._session_start(gid)
+        for gid in self.external - found:
+            self._session_end(gid)
         self.external = found
         return changed
 
@@ -241,6 +247,8 @@ class Controller:
 
         def on_state(st: str, code: int | None):
             self.emit("state", key, st)
+            if st in (State.EXITED, State.ERROR):
+                self._session_end(key)
             if st == State.EXITED and notify_user:
                 integration.notify(_('{0} se ha cerrado').format(name))
             elif st == State.ERROR:
@@ -264,6 +272,7 @@ class Controller:
                                    _('GPU: {0}').format(plan.gpu.name if plan.gpu else _("predeterminada")))
                 threading.Thread(target=self._watch_gpu, args=(key,), daemon=True).start()
                 self.emit("game_started", key)
+                self._session_start(key)
 
         previous = self._previous_runner(prefix)
         if plan.runner.kind == "proton" and previous and previous != plan.runner.name and not fresh:
@@ -492,7 +501,74 @@ class Controller:
         self.cfg.games.append(g)
         self.save()
         self.emit("library")
+        if sgdb.get_key() and not installers.is_installer(exe):
+            self.fetch_cover(g.id, quiet=True)
         return g
+
+    # ------------------------------------------------------------ SteamGridDB
+    def fetch_cover(self, game_id: str, quiet: bool = False) -> None:
+        """Busca en SteamGridDB la portada del juego (por su nombre) y la aplica."""
+        g = self.cfg.game(game_id)
+        if g is None:
+            return
+
+        def work():
+            try:
+                path = sgdb.best_cover(g.name)
+            except sgdb.SGDBError as e:
+                if not quiet:
+                    self.error(str(e))
+                log.info("SteamGridDB sin portada para %s: %s", g.name, e)
+                return
+            if path is None:
+                if not quiet:
+                    self.emit("toast", _("SteamGridDB no tiene portada para «{0}».").format(g.name))
+                return
+            GLib.idle_add(lambda: (self.set_cover(game_id, str(path)), False)[1])
+        threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------ tiempo de juego
+    def _tracks_time(self, key: str) -> bool:
+        g = self.cfg.game(key)
+        return bool(g and g.kind in ("blizzard", "custom"))
+
+    def _session_start(self, key: str) -> None:
+        if self._tracks_time(key) and key not in self._sessions:
+            self._sessions[key] = time.time()
+            g = self.cfg.game(key)
+            g.last_played = time.strftime("%Y-%m-%dT%H:%M:%S")
+            self.save()
+
+    def _add_played(self, key: str, until: float) -> None:
+        start = self._sessions.get(key)
+        g = self.cfg.game(key)
+        if start is None or g is None:
+            return
+        g.playtime += max(0, int(until - start))
+        g.last_played = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    def _session_end(self, key: str) -> None:
+        if key in self._sessions:
+            self._add_played(key, time.time())
+            del self._sessions[key]
+            self.save()
+            self.emit("library")
+
+    def _tick_playtime(self) -> bool:
+        """Cada minuto se suma lo jugado: nada se pierde si Umbral se cierra de golpe."""
+        if self._sessions:
+            now = time.time()
+            for key in list(self._sessions):
+                self._add_played(key, now)
+                self._sessions[key] = now
+            self.save()
+            self.emit("library")
+        return True
+
+    def flush_playtime(self) -> None:
+        """Al salir de Umbral: guarda lo jugado hasta ahora (el juego sigue abierto)."""
+        if self._sessions:
+            self._tick_playtime()
 
     def remove_game(self, game_id: str) -> None:
         g = self.cfg.game(game_id)

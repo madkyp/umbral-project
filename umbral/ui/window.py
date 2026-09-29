@@ -7,7 +7,7 @@ from pathlib import Path
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
-from .. import APP_NAME, battlenet, exeicon, installers, integration, prefixes
+from .. import APP_NAME, battlenet, exeicon, installers, integration, playtime, prefixes
 from ..config import BATTLENET_ID, Game
 from ..controller import Controller
 from ..launcher import State
@@ -348,7 +348,9 @@ class MainWindow(Adw.ApplicationWindow):
                               max_width_chars=1, hexpand=True, tooltip_text=g.name))
         meta = Gtk.Box(spacing=6)
         prefix = self.ctl.cfg.prefix(g.prefix_id)
-        meta.append(Gtk.Label(label=(g.options.runner or (prefix.runner if prefix else "?")), xalign=0,
+        runner = g.options.runner or (prefix.runner if prefix else "?")
+        played = playtime.summary(g.playtime, g.last_played)
+        meta.append(Gtk.Label(label=played or runner, xalign=0, tooltip_text=runner,
                               css_classes=["caption", "dim-label"], ellipsize=3, hexpand=True))
         if st and st != State.EXITED:
             meta.append(Gtk.Label(label=st, css_classes=["status-chip", CHIP.get(st, "")]))

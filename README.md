@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.8.5](https://img.shields.io/badge/version-0.8.5-informational)
+![Version 0.9.0](https://img.shields.io/badge/version-0.9.0-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -52,6 +52,8 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
   - by default the **game's own icon** (extracted from the `.exe`) sits in the logo slot over its dominant colour;
   - a **cover image** you pick is shown **whole, edge to edge** — no cropping or zoom, the spare space takes the image's colour;
   - a custom **icon** is fitted into the logo slot keeping its transparency.
+- **[SteamGridDB](https://www.steamgriddb.com/) covers**: games you add get a cover automatically, and a gallery in each game's settings lets you pick community covers or logos. Needs your free API key (*System → SteamGridDB*), stored only on your machine.
+- **Playtime**: total hours and last session on every card (*"3 h 20 min · today"*), saved every minute — also when WoW is started through Battle.net.
 
 ### 🖥️ GPU aware — NVIDIA, AMD and hybrids
 - Detects every GPU (`lspci`, `vulkaninfo`), its driver and Vulkan support, and flags problems with the **exact `pacman` command** to fix them: missing `lib32` Vulkan packages, `nouveau`, `nvidia_drm.modeset` off, old drivers for vkd3d-proton, AMDVLK next to RADV…
