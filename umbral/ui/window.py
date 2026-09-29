@@ -7,7 +7,7 @@ from pathlib import Path
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
-from .. import APP_NAME, battlenet, installers, integration, prefixes
+from .. import APP_NAME, battlenet, exeicon, installers, integration, prefixes
 from ..config import BATTLENET_ID, Game
 from ..controller import Controller
 from ..launcher import State
@@ -16,6 +16,8 @@ from .game_settings import GameSettings
 from .system_page import SystemPage
 from .wizard import SetupWizard
 from ..i18n import _
+
+CARD_WIDTH = 276   # ancho fijo de todas las tarjetas (el que tenía la de WoW Forever)
 
 CHIP = {State.RUNNING: "running", State.STARTING: "starting", State.STOPPING: "starting",
         State.ERROR: "error", _('Comprobando versión'): "starting"}
@@ -188,15 +190,15 @@ class MainWindow(Adw.ApplicationWindow):
         return cls
 
     def _cover(self, g: Game) -> Gtk.Widget:
-        """Portada: imagen del usuario a sangre, o el icono del juego sobre su color."""
+        """Portada: la imagen elegida (portada o icono) o la del juego, siempre en el hueco
+        del logo y sobre su color, para que todas las tarjetas midan lo mismo."""
         cover = Gtk.Overlay(css_classes=["cover"], overflow=Gtk.Overflow.HIDDEN)
+        icon = None
         if g.cover and Path(g.cover).exists():
-            pic = Gtk.Picture.new_for_filename(g.cover)
-            pic.set_content_fit(Gtk.ContentFit.COVER)
-            pic.add_css_class("cover-picture")
-            cover.set_child(pic)
-            return cover
-        icon = self.ctl.game_icon(g)
+            thumb = exeicon.ball_thumbnail(g.cover, crop=True)
+            icon = (thumb, exeicon.dominant_color(thumb)) if thumb else None
+        if icon is None:
+            icon = self.ctl.game_icon(g)
         if icon and icon[0]:
             png, color = icon
             cover.add_css_class(self._tint_class(color))
@@ -295,7 +297,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _card(self, g: Game) -> Gtk.Widget:
         running = self.ctl.is_running(g.id)
         st = self.ctl.state(g.id)
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["game-card"], width_request=230)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["game-card"], width_request=CARD_WIDTH)
         cover = self._cover(g)
         badge_txt = {"blizzard": "Battle.net"}.get(g.kind, "")
         if g.kind == "custom":
@@ -310,8 +312,9 @@ class MainWindow(Adw.ApplicationWindow):
 
         info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=12, margin_bottom=14,
                        margin_start=14, margin_end=14)
+        # max_width_chars=1 + ellipsize: el nombre no ensancha la tarjeta (todas miden CARD_WIDTH)
         info.append(Gtk.Label(label=g.name, xalign=0, css_classes=["card-title"], ellipsize=3,
-                              tooltip_text=g.name))
+                              max_width_chars=1, hexpand=True, tooltip_text=g.name))
         meta = Gtk.Box(spacing=6)
         prefix = self.ctl.cfg.prefix(g.prefix_id)
         meta.append(Gtk.Label(label=(g.options.runner or (prefix.runner if prefix else "?")), xalign=0,

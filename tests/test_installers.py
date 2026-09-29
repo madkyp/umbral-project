@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from umbral import installers, launcher
@@ -40,6 +41,27 @@ class TestInstallers(unittest.TestCase):
             found = installers.new_executables(pfx, before)
             self.assertEqual([p.name for p in found], ["MiJuego.exe", "Tool.exe"])   # el grande primero
             self.assertEqual(installers.pretty_name(found[0]), "Mi Juego")         # salta la carpeta bin
+
+
+
+class TestBallThumbnail(unittest.TestCase):
+    def test_cover_and_icon_become_same_square(self):
+        from PIL import Image
+
+        from umbral import exeicon
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.object(exeicon, "ICON_CACHE", Path(d) / "c"):
+            wide = Path(d) / "portada.jpg"
+            Image.new("RGB", (1280, 720), "red").save(wide)            # foto apaisada
+            tall = Path(d) / "icono.png"
+            Image.new("RGBA", (64, 200), (0, 0, 255, 255)).save(tall)  # icono estrecho
+            a = Image.open(exeicon.ball_thumbnail(str(wide), crop=True))
+            b = Image.open(exeicon.ball_thumbnail(str(tall), crop=False))
+            self.assertEqual(a.size, (256, 256))
+            self.assertEqual(b.size, (256, 256))
+            self.assertEqual(a.getpixel((0, 0))[3], 0)        # esquina redondeada: transparente
+            self.assertEqual(a.getpixel((128, 128))[3], 255)
+            self.assertEqual(b.getpixel((10, 128))[3], 0)      # el icono no se deforma: bordes libres
+            self.assertEqual(b.getpixel((128, 128))[3], 255)
 
 
 if __name__ == "__main__":

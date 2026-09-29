@@ -76,7 +76,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 ## 🧩 Requirements
 
 **Required:**
-- `python` (3.11+), `python-gobject`, `gtk4`, `libadwaita` (1.5+)
+- `python` (3.11+), `python-gobject`, `python-pillow`, `gtk4`, `libadwaita` (1.5+)
 - [`umu-launcher`](https://github.com/Open-Wine-Components/umu-launcher)
 - `vulkan-icd-loader`, `lib32-vulkan-icd-loader` and your GPU's Vulkan driver:
   - **NVIDIA**: `nvidia-utils`, `lib32-nvidia-utils`

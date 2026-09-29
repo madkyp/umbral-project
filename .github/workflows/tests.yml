@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y zstd
-          pip install ruff
+          pip install ruff pillow
       - name: Lint
         run: ruff check --select E,F,W,B --ignore E501 umbral tests
       - name: Unit tests

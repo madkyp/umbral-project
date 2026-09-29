@@ -1,12 +1,12 @@
 # Maintainer: madky
 pkgname=umbral
-pkgver=0.7.0
+pkgver=0.7.1
 pkgrel=1
 pkgdesc="Minimal Battle.net launcher for Arch/Hyprland: official client, WoW Forever, umu + Proton (GTK4/libadwaita)"
 arch=('any')
 url='https://github.com/madkyp/umbral-project'
 license=('MIT')
-depends=('python' 'python-gobject' 'gtk4' 'libadwaita' 'umu-launcher' 'pciutils' 'vulkan-tools'
+depends=('python' 'python-gobject' 'python-pillow' 'gtk4' 'libadwaita' 'umu-launcher' 'pciutils' 'vulkan-tools'
          'vulkan-icd-loader' 'lib32-vulkan-icd-loader' 'libnotify' 'tar' 'zstd')
 optdepends=('gamemode: CPU tweaks while playing'
             'lib32-gamemode: gamemode for 32-bit processes'

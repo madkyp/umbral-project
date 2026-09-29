@@ -199,3 +199,39 @@ def dominant_color(png: Path) -> str:
         return "#2a3350"
     r, g, b = (sum(c[i] for c in px) // len(px) for i in range(3))
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def ball_thumbnail(image: str, crop: bool, size: int = 256, radius: int = 44) -> Path | None:
+    """Miniatura cuadrada para el hueco del logo de la tarjeta (se cachea).
+
+    crop=True (portadas/fotos): recorte centrado a cuadrado y esquinas redondeadas.
+    crop=False (iconos): se encaja entero respetando la transparencia.
+    """
+    from PIL import Image, ImageDraw, ImageOps
+    p = Path(image)
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    key = hashlib.sha1(f"{p}|{st.st_size}|{st.st_mtime_ns}|{crop}|{size}".encode()).hexdigest()[:16]
+    target = ICON_CACHE / f"ball-{key}.png"
+    if target.exists():
+        return target
+    try:
+        img = Image.open(p).convert("RGBA")
+    except (OSError, ValueError) as e:
+        log.warning("Imagen no válida %s: %s", p, e)
+        return None
+    if crop:
+        img = ImageOps.fit(img, (size, size), Image.LANCZOS)
+        mask = Image.new("L", (size, size), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius=radius, fill=255)
+        img.putalpha(Image.composite(img.getchannel("A"), mask, mask))
+    else:
+        img = ImageOps.contain(img, (size, size), Image.LANCZOS)
+        canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        canvas.paste(img, ((size - img.width) // 2, (size - img.height) // 2), img)
+        img = canvas
+    ICON_CACHE.mkdir(parents=True, exist_ok=True)
+    img.save(target)
+    return target

@@ -96,7 +96,10 @@ class Controller:
     # ------------------------------------------------------------ iconos
     def game_icon(self, g: Game) -> tuple[Path | None, str] | None:
         """Icono de una entrada: el del usuario, el incluido para el producto o el del .exe."""
-        custom = Path(g.icon) if g.icon and Path(g.icon).exists() else exeicon.product_icon(g.product)
+        custom = None
+        if g.icon and Path(g.icon).exists():
+            custom = exeicon.ball_thumbnail(g.icon, crop=False)
+        custom = custom or exeicon.product_icon(g.product)
         if custom:
             key = str(custom)
             if key not in self._icons:
