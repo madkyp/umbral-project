@@ -36,6 +36,64 @@ MANGOHUD_POSITIONS = {"top-left": _('Arriba a la izquierda'), "top-right": _('Ar
                       "bottom-left": _('Abajo a la izquierda'), "bottom-right": _('Abajo a la derecha')}
 
 
+# gamescope 3.16: -w/-h resolución del juego, -W/-H salida, -f/-b, -S escalado, -F filtro
+GS_MODES = {"fullscreen": _("Pantalla completa"), "borderless": _("Ventana sin bordes"), "window": _("Ventana")}
+GS_SCALERS = {"fit": _("Ajustar (mantiene la proporción)"), "integer": _("Entero (píxel perfecto)"),
+              "stretch": _("Estirar a toda la pantalla")}
+GS_FILTERS = {"linear": _("Suave"), "nearest": _("Nítido (ideal para pixel art)"), "fsr": "AMD FSR",
+              "pixel": _("Píxel (suavizado solo en los bordes)")}
+GS_RESOLUTIONS = ["640x480", "800x600", "1024x768", "1280x720", "1280x800", "1600x900", "1920x1080", "2560x1440"]
+
+
+def monitor_resolution() -> tuple[int, int] | None:
+    """Resolución del monitor con el foco (Hyprland); None si no se puede saber."""
+    import json
+    if not shutil.which("hyprctl"):
+        return None
+    try:
+        mons = json.loads(subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True,
+                                         timeout=3).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    m = next((m for m in mons if m.get("focused")), mons[0] if mons else None)
+    if not m:
+        return None
+    scale = float(m.get("scale") or 1)
+    return int(m["width"] / scale), int(m["height"] / scale)
+
+
+def gamescope_command(opts: LaunchOptions, output: tuple[int, int] | None) -> list[str]:
+    """Argumentos de gamescope a partir de las opciones legibles (y los extra del usuario)."""
+    args: list[str] = []
+    game = None
+    if opts.gs_resolution and "x" in opts.gs_resolution:
+        try:
+            game = tuple(int(v) for v in opts.gs_resolution.lower().split("x", 1))
+            args += ["-w", str(game[0]), "-h", str(game[1])]
+        except ValueError:
+            game = None
+    mode = opts.gs_mode or "fullscreen"
+    if output:
+        if mode == "window" and game:
+            # ventana al mayor múltiplo entero que quepa en el 90 % de la pantalla
+            k = max(1, min(int(output[0] * 0.9) // game[0], int(output[1] * 0.9) // game[1]))
+            args += ["-W", str(game[0] * k), "-H", str(game[1] * k)]
+        elif mode != "window":
+            args += ["-W", str(output[0]), "-H", str(output[1])]
+    if mode == "fullscreen":
+        args.append("-f")
+    elif mode == "borderless":
+        args.append("-b")
+    args += ["-S", opts.gs_scaler or "fit", "-F", opts.gs_filter or "linear"]
+    extra = shlex.split(opts.gamescope_args or "")
+    if mode == "fullscreen":
+        extra = [a for a in extra if a not in ("-f", "--fullscreen")]   # el antiguo valor por defecto era «-f»
+    args += extra
+    if opts.mangohud and "--mangoapp" not in args:
+        args.append("--mangoapp")
+    return args
+
+
 def mangohud_config(preset: str | None, position: str | None) -> str:
     opts = MANGOHUD_PRESETS.get(preset or "basic", MANGOHUD_PRESETS["basic"])[1]
     pos = position if position in MANGOHUD_POSITIONS else "top-left"
@@ -132,10 +190,7 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
     wrappers: list[str] = []
     if opts.gamescope:
         if shutil.which("gamescope"):
-            gs = shlex.split(opts.gamescope_args or "")
-            if opts.mangohud and "--mangoapp" not in gs:
-                gs.append("--mangoapp")
-            wrappers += ["gamescope", *gs, "--"]
+            wrappers += ["gamescope", *gamescope_command(opts, monitor_resolution()), "--"]
         else:
             warnings.append(_('gamescope no está instalado; se lanza sin él.'))
     if opts.gamemode:

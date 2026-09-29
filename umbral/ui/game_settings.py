@@ -11,7 +11,8 @@ from .. import gpu as gpumod
 from .. import library, wowconfig
 from ..config import BATTLENET_ID, Game, LaunchOptions
 from ..controller import Controller
-from ..launcher import MANGOHUD_POSITIONS, MANGOHUD_PRESETS, effective_options
+from ..launcher import (GS_FILTERS, GS_MODES, GS_RESOLUTIONS, GS_SCALERS, MANGOHUD_POSITIONS, MANGOHUD_PRESETS,
+                        effective_options, monitor_resolution)
 from ..i18n import _
 
 # (campo, título, descripción/variable)
@@ -26,7 +27,6 @@ SWITCHES = [
 ]
 TOOLS = [
     ("gamemode", "GameMode", _('gamemoderun · ajustes de CPU durante la partida')),
-    ("gamescope", "Gamescope", _('Microcompositor; útil para escalar o limitar FPS')),
 ]
 
 
@@ -223,6 +223,7 @@ class GameSettings(Adw.PreferencesDialog):
             self.mh_row.set_sensitive(False)
         m.add(self.mh_row)
         page.add(m)
+        page.add(self._gamescope_group())
         page.add(g)
 
         t = Adw.PreferencesGroup(title=_('Herramientas'))
@@ -230,10 +231,46 @@ class GameSettings(Adw.PreferencesDialog):
             row = Adw.SwitchRow(title=title, subtitle=sub, active=bool(getattr(self.eff, field)))
             self.switches[field] = row
             t.add(row)
-        self.gs_args = Adw.EntryRow(title=_('Argumentos de gamescope'), text=self.eff.gamescope_args or "-f")
-        t.add(self.gs_args)
         page.add(t)
         return page
+
+    def _gamescope_group(self) -> Adw.PreferencesGroup:
+        """Resolución y escalado con gamescope, en opciones legibles."""
+        grp = Adw.PreferencesGroup(title=_("Pantalla"))
+        self.gs_row = Adw.ExpanderRow(title=_("Resolución y escalado (gamescope)"), show_enable_switch=True,
+                                      subtitle=_("Agranda juegos de baja resolución (p. ej. RPG Maker a 640×480) "
+                                                 "a toda tu pantalla"),
+                                      enable_expansion=bool(self.eff.gamescope), expanded=bool(self.eff.gamescope))
+        mon = monitor_resolution()
+        screen = f"{mon[0]}×{mon[1]}" if mon else "?"
+        self._gs_res = [""] + GS_RESOLUTIONS
+        cur = (self.eff.gs_resolution or "").lower()
+        if cur and cur not in self._gs_res:
+            self._gs_res.append(cur)
+        labels = [_("La de la pantalla ({0})").format(screen)] + [r.replace("x", "×") for r in self._gs_res[1:]]
+        self.gs_res_row = Adw.ComboRow(title=_("Resolución del juego"),
+                                       subtitle=_("A la que dibuja el juego; gamescope la escala a tu pantalla"),
+                                       model=Gtk.StringList.new(labels), selected=self._gs_res.index(cur))
+        self._gs_combos = {}
+        rows = [self.gs_res_row]
+        for field, title, options, default in (("gs_mode", _("Ventana"), GS_MODES, "fullscreen"),
+                                               ("gs_scaler", _("Escalado"), GS_SCALERS, "fit"),
+                                               ("gs_filter", _("Filtro"), GS_FILTERS, "linear")):
+            keys = list(options)
+            val = getattr(self.eff, field) or default
+            row = Adw.ComboRow(title=title, model=Gtk.StringList.new(list(options.values())),
+                               selected=keys.index(val) if val in keys else 0)
+            self._gs_combos[field] = (row, keys, default)
+            rows.append(row)
+        self.gs_args = Adw.EntryRow(title=_("Argumentos extra de gamescope"), text=self.eff.gamescope_args or "")
+        rows.append(self.gs_args)
+        for r in rows:
+            self.gs_row.add_row(r)
+        if not shutil.which("gamescope"):
+            self.gs_row.set_subtitle(_("No instalado: sudo pacman -S gamescope"))
+            self.gs_row.set_sensitive(False)
+        grp.add(self.gs_row)
+        return grp
 
     # ---------------------------------------------------------------- gpu
     def _gpu(self) -> Adw.PreferencesPage:
@@ -338,8 +375,18 @@ class GameSettings(Adw.PreferencesDialog):
         pos = self._mh_positions[self.mh_pos.get_selected()]
         if pos != (self.eff.mangohud_position or "top-left") or t.mangohud_position is not None:
             t.mangohud_position = pos
+        on = self.gs_row.get_enable_expansion()
+        if on != bool(self.eff.gamescope) or t.gamescope is not None:
+            t.gamescope = on
+        res = self._gs_res[self.gs_res_row.get_selected()]
+        if res != (self.eff.gs_resolution or "") or t.gs_resolution is not None:
+            t.gs_resolution = res
+        for field, (row, keys, default) in self._gs_combos.items():
+            val = keys[row.get_selected()]
+            if val != (getattr(self.eff, field) or default) or getattr(t, field) is not None:
+                setattr(t, field, val)
         gs = self.gs_args.get_text().strip()
-        if gs != (self.eff.gamescope_args or "-f"):
+        if gs != (self.eff.gamescope_args or "") or t.gamescope_args is not None:
             t.gamescope_args = gs
         if self.gpu_row is not None:
             choice = self._gpu_ids[self.gpu_row.get_selected()]

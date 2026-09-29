@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.9.1](https://img.shields.io/badge/version-0.9.1-informational)
+![Version 0.9.2](https://img.shields.io/badge/version-0.9.2-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -64,7 +64,8 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 - **Runner**: GE-Proton, UMU-Proton, Proton-CachyOS or system Wine. GE-Proton and UMU-Proton download from their official GitHub releases, **verified with SHA-512**.
 - **Automatic prefix backup** before a prefix switches Proton version (no games inside, ~300 MB, restorable from *Repair*).
 - **Graphics API** for WoW: automatic, DirectX 12 (VKD3D-Proton) or DirectX 11 (DXVK), written to `Config.wtf`.
-- **MangoHud** overlay (FPS only / basic / full, any corner), GameMode, gamescope, esync/fsync/ntsync, WineD3D, Wayland driver, per-prefix shader cache, launch arguments and environment variables.
+- **Resolution and scaling with gamescope**: pick the game's resolution (e.g. 640×480 for RPG Maker games), fullscreen / borderless / window, fit / integer / stretch scaling and a sharp filter for pixel art — the output resolution is read from your monitor.
+- **MangoHud** overlay (FPS only / basic / full, any corner), GameMode, esync/fsync/ntsync, WineD3D, Wayland driver, per-prefix shader cache, launch arguments and environment variables.
 
 ### 🪟 Desktop integration
 - **Tray icon** (StatusNotifierItem — Waybar, KDE…): closing the window keeps Umbral in the background; the menu opens Battle.net or any game. When a game starts, Umbral **hides itself in the tray** (optional; Hyprland has no "minimise").

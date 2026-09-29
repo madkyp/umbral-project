@@ -52,10 +52,25 @@ class TestBuild(unittest.TestCase):
         self.bnet.options = LaunchOptions(gamescope=True, gamescope_args="-f -W 1920", mangohud=True,
                                           gamemode=True)
         plan = launcher.build(self.cfg, self.bnet, "a.exe", runners=[self.r])
-        self.assertEqual(plan.argv[:6], ["gamescope", "-f", "-W", "1920", "--mangoapp", "--"])
+        gs = plan.argv[:plan.argv.index("--") + 1]
+        self.assertEqual(gs[0], "gamescope")
+        self.assertEqual(gs.count("-f"), 1)                      # el «-f» antiguo no se duplica
+        self.assertIn("-W", gs)                                  # los argumentos extra se conservan
+        self.assertIn("--mangoapp", gs)
         self.assertNotIn("MANGOHUD", plan.env)
         self.assertIn("gpu_temp", plan.env["MANGOHUD_CONFIG"])   # mangoapp también lo lee
         self.assertTrue(any("gamemode" in w for w in plan.warnings))
+
+    def test_gamescope_command(self):
+        o = LaunchOptions(gs_resolution="640x480", gs_mode="fullscreen", gs_scaler="integer", gs_filter="nearest")
+        self.assertEqual(launcher.gamescope_command(o, (1920, 1080)),
+                         ["-w", "640", "-h", "480", "-W", "1920", "-H", "1080", "-f", "-S", "integer", "-F", "nearest"])
+        o = LaunchOptions(gs_resolution="640x480", gs_mode="window")      # ventana: mayor múltiplo que cabe
+        self.assertEqual(launcher.gamescope_command(o, (1920, 1080))[:10],
+                         ["-w", "640", "-h", "480", "-W", "1280", "-H", "960", "-S", "fit"])
+        o = LaunchOptions(gs_mode="borderless", gamescope_args="--force-grab-cursor", mangohud=True)
+        self.assertEqual(launcher.gamescope_command(o, None),
+                         ["-b", "-S", "fit", "-F", "linear", "--force-grab-cursor", "--mangoapp"])
 
     def test_mangohud_presets(self):
         self.bnet.options = LaunchOptions(mangohud=True, mangohud_preset="fps", mangohud_position="top-right")

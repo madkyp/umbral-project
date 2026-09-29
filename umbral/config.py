@@ -33,7 +33,11 @@ class LaunchOptions:
     mangohud_preset: str | None = None  # "fps" | "basic" | "full"
     mangohud_position: str | None = None
     gamescope: bool | None = None
-    gamescope_args: str | None = None
+    gamescope_args: str | None = None      # argumentos extra
+    gs_resolution: str | None = None       # resolución del juego «WxH»; "" = la de la pantalla
+    gs_mode: str | None = None             # fullscreen | borderless | window
+    gs_scaler: str | None = None           # fit | integer | stretch
+    gs_filter: str | None = None           # linear | nearest | fsr | pixel
     gpu: str | None = None              # "auto" o "vvvv:dddd" (ids PCI)
 
     @classmethod
@@ -48,7 +52,7 @@ class LaunchOptions:
 BATTLENET_DEFAULTS = LaunchOptions(
     use_wined3d=False, no_esync=False, no_fsync=False, no_ntsync=False,
     wayland=False, writecopy=True, gpu_shader_cache=True,
-    gamemode=False, mangohud=False, gamescope=False, gamescope_args="-f",
+    gamemode=False, mangohud=False, gamescope=False, gamescope_args="",
     gpu="auto",
 )
 
