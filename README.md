@@ -3,6 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
+![Version 0.8.1](https://img.shields.io/badge/version-0.8.1-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -47,7 +48,10 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
   - Each one in its **own prefix** (recommended) or in the Battle.net one.
   - After running an **installer**, Umbral lists the new executables it left behind and adds the game with one click.
   - **Moves the game into Umbral's games folder** (`~/Games/umbral/games/`, on by default) so it doesn't live in *Downloads* waiting to be deleted by accident. Only the game's own folder moves — a loose `.exe` in *Downloads* moves alone, `bin/` or `Binaries/Win64/` layouts move from the game's root, and installers are never moved. Already-added games can be moved from their ⋮ menu, and removing a game offers to delete its files too (never without asking).
-- Covers use the **game's own icon** (extracted from the `.exe`) over its dominant colour, or any **cover image / icon** you pick.
+- **Every card has the same size**, Battle.net games and your own alike:
+  - by default the **game's own icon** (extracted from the `.exe`) sits in the logo slot over its dominant colour;
+  - a **cover image** you pick is shown **whole, edge to edge** — no cropping or zoom, the spare space takes the image's colour;
+  - a custom **icon** is fitted into the logo slot keeping its transparency.
 
 ### 🖥️ GPU aware — NVIDIA, AMD and hybrids
 - Detects every GPU (`lspci`, `vulkaninfo`), its driver and Vulkan support, and flags problems with the **exact `pacman` command** to fix them: missing `lib32` Vulkan packages, `nouveau`, `nvidia_drm.modeset` off, old drivers for vkd3d-proton, AMDVLK next to RADV…
@@ -161,7 +165,8 @@ Your prefixes (`~/Games/umbral/`) and settings (`~/.config/umbral/`) are left un
 | `launcher.py` | Builds the umu / Proton command and environment, captures logs, clean shutdown (`wineserver -k` → SIGTERM → SIGKILL) |
 | `gpu.py` | GPU / driver / Vulkan detection, diagnostics and per-GPU environment |
 | `runners.py` / `prefixes.py` | Proton discovery and verified downloads; prefix health, repair, backups |
-| `installers.py` | `.msi` / `.bat` handling and "what did this installer install?" |
+| `installers.py` | `.msi` / `.bat` handling, "what did this installer install?" and moving games into the games folder |
+| `exeicon.py` | Icon extraction from Windows executables (PE resources), thumbnails and card colours |
 | `controller.py` | App state and orchestration, independent of the widgets |
 | `ui/` · `tray.py` | libadwaita windows and dialogs · StatusNotifierItem + dbusmenu over D-Bus |
 
@@ -173,7 +178,7 @@ Settings live in `~/.config/umbral/config.json`, logs in `~/.local/state/umbral/
 python -m unittest discover -s tests -t tests
 ```
 
-The suite runs without GTK, root or network: GPU detection is tested with real and simulated `lspci` / `vulkaninfo` output (NVIDIA, AMD, Intel, Intel+NVIDIA and AMD+AMD hybrids), Battle.net detection with synthetic `product.db` files and fake prefixes, plus the update check, launch environment, backups, installers and translation coverage. GitHub Actions runs it — plus `ruff` — on every push.
+The suite runs without GTK, root or network: GPU detection is tested with real and simulated `lspci` / `vulkaninfo` output (NVIDIA, AMD, Intel, Intel+NVIDIA and AMD+AMD hybrids), Battle.net detection with synthetic `product.db` files and fake prefixes, plus the update check, launch environment, backups, installers, moving games out of *Downloads* (without ever moving *Downloads* itself), card thumbnails and translation coverage. GitHub Actions runs it — plus `ruff` — on every push.
 
 ---
 
