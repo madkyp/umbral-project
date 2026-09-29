@@ -143,6 +143,20 @@ def human_size(n: float) -> str:
     return f"{n:.1f} TB"
 
 
+def find_moved(exe: str, games_root: Path) -> str | None:
+    """Si el .exe ya no está donde se guardó pero Umbral lo movió a su carpeta de juegos,
+    devuelve la ruta nueva (misma carpeta/archivo con el mismo nombre)."""
+    p = Path(exe)
+    if p.exists() or not games_root.is_dir():
+        return None
+    folder = game_folder(exe)
+    candidates = [games_root / folder.name / p.relative_to(folder), games_root / p.stem / p.name]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return None
+
+
 def move_game(exe: str, games_root: Path) -> str:
     """Mueve la carpeta (o el archivo) del juego a games_root y devuelve la nueva ruta del .exe.
     Mismo disco: es un renombrado instantáneo; si no, shutil copia y luego borra el original."""

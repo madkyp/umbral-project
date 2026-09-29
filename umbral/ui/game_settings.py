@@ -62,7 +62,8 @@ class GameSettings(Adw.PreferencesDialog):
         self.name_row = Adw.EntryRow(title=_('Nombre'), text=self.game.name)
         g.add(self.name_row)
         if self.game.kind == "custom":
-            self.exe_row = Adw.EntryRow(title="Ejecutable (.exe)", text=self.game.exe)
+            self._exe_initial = self.game.exe
+            self.exe_row = Adw.EntryRow(title=_("Ejecutable (.exe)"), text=self.game.exe)
             pick = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"])
             pick.connect("clicked", self._pick_exe)
             self.exe_row.add_suffix(pick)
@@ -289,7 +290,11 @@ class GameSettings(Adw.PreferencesDialog):
         if name:
             g.name = name
         if g.kind == "custom":
-            g.exe = self.exe_row.get_text().strip()
+            # Solo si lo has editado tú: el juego puede haberse movido mientras el diálogo
+            # estaba abierto y no hay que pisar la ruta nueva con la antigua.
+            new_exe = self.exe_row.get_text().strip()
+            if new_exe and new_exe != self._exe_initial:
+                g.exe = new_exe
         t.args = self.args_row.get_text().strip()
         if self.runner_row is not None:
             sel = self._runner_names[self.runner_row.get_selected()]

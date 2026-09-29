@@ -113,6 +113,7 @@
  "Driver Wayland de Wine": "Wine Wayland driver",
  "Driver kernel: {0} · Vulkan: {1} · PCI {2}": "Kernel driver: {0} · Vulkan: {1} · PCI {2}",
  "Ejecutable": "Executable",
+ "Ejecutable (.exe)": "Executable (.exe)",
  "Ejecutables .exe, instaladores .msi o scripts .bat de Windows.": "Windows .exe executables, .msi installers or .bat scripts.",
  "Ejecutables de Windows": "Windows executables",
  "Ejecutables de Windows (.exe, .msi, .bat)": "Windows executables (.exe, .msi, .bat)",

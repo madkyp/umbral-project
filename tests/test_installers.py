@@ -108,6 +108,20 @@ class TestMoveGame(unittest.TestCase):
         new = installers.move_game(str(exe), self.root)
         self.assertEqual(Path(new), self.root / "MiJuego (2)/Binaries/Win64/MiJuego.exe")
 
+    def test_find_moved_heals_stale_path(self):
+        game = self.downloads / "Pokémon Iberia V2" / "Pokémon Iberia V2.03"
+        game.mkdir(parents=True)
+        (game / "Game.exe").write_bytes(b"MZ")
+        old = str(game / "Game.exe")
+        self.assertIsNone(installers.find_moved(old, self.root))          # aún está en su sitio
+        new = installers.move_game(old, self.root)
+        self.assertEqual(installers.find_moved(old, self.root), new)      # ruta vieja -> nueva
+        loose = self.downloads / "suelto.exe"
+        loose.write_bytes(b"MZ")
+        new2 = installers.move_game(str(loose), self.root)
+        self.assertEqual(installers.find_moved(str(loose), self.root), new2)
+        self.assertIsNone(installers.find_moved(str(self.downloads / "no-existe.exe"), self.root))
+
     def test_game_folder_to_open(self):
         self.assertEqual(installers.game_folder("/g/WoW/_classic_beta_/WowB.exe"), Path("/g/WoW/_classic_beta_"))
         self.assertEqual(installers.game_folder("/g/MiJuego/Binaries/Win64/MiJuego.exe"), Path("/g/MiJuego"))

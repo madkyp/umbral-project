@@ -87,6 +87,14 @@ class Controller:
 
     def sync_library(self) -> None:
         changes = library.sync_detected(self.cfg)
+        # Autorreparación: juegos movidos a la carpeta de Umbral cuya ruta quedó desactualizada
+        for g in self.cfg.games:
+            if g.kind == "custom" and g.id not in self.moving:
+                found = installers.find_moved(g.exe, self.games_root())
+                if found:
+                    log.info("Ruta de %s corregida: %s -> %s", g.name, g.exe, found)
+                    g.exe = found
+                    changes.append(f"~ {g.name}")
         if changes:
             self.save()
             for c in changes:
