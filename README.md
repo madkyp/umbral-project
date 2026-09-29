@@ -74,7 +74,21 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 
 ## 📸 Screenshots
 
-*Coming soon.*
+| LIBRARY | SYSTEM |
+|---|---|
+| ![Library — Battle.net games and your own, with one-click Play](screenshots/library.png) | ![System — GPU diagnostics and Proton runners](screenshots/system.png) |
+
+| GAME SETTINGS · GENERAL | GAME SETTINGS · PERFORMANCE | GAME SETTINGS · GPU |
+|---|---|---|
+| ![General — update check, graphics API, cover and icon](screenshots/settings-general.png) | ![Performance — MangoHud, Proton options and tools](screenshots/settings-performance.png) | ![GPU — detected card and the variables Umbral applies](screenshots/settings-gpu.png) |
+
+| ADD A GAME | LOG CONSOLE |
+|---|---|
+| ![Add — any .exe/.msi/.bat, own prefix, move it out of Downloads](screenshots/add-game.png) | ![Console — the exact command, GPU in use and Proton output](screenshots/console.png) |
+
+| FIRST RUN | SETUP WIZARD | INSTALL |
+|---|---|---|
+| ![First run — set up Battle.net](screenshots/setup.png) | ![Wizard — new prefix or import an existing one](screenshots/setup-wizard.png) | ![Install — runner, prefix, official installer](screenshots/setup-install.png) |
 
 ---
 
@@ -212,7 +226,7 @@ This project was created **with the help of AI** (Anthropic's Claude, through Cl
 - It is an **alpha** and is provided **as is**, without warranty of any kind (see the [license](LICENSE)).
 - It creates, repairs and — only when you confirm — deletes Wine prefixes. Keep backups of anything important (save games, addons, settings).
 
-Umbral is an independent project, **not affiliated with or endorsed by Blizzard Entertainment**. Battle.net, World of Warcraft and related names are trademarks of Blizzard Entertainment, Inc. No Blizzard artwork is included in this repository.
+Umbral is an independent project, **not affiliated with or endorsed by Blizzard Entertainment**. Battle.net, World of Warcraft and related names are trademarks of Blizzard Entertainment, Inc. Umbral does not ship any Blizzard artwork: game icons are read from your own installed games at runtime (the screenshots show the author's installation).
 
 Found a bug or something that looks wrong? Please open an issue.
 
