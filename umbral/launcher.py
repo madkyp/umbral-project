@@ -45,6 +45,20 @@ GS_FILTERS = {"linear": _("Suave"), "nearest": _("Nítido (ideal para pixel art)
 GS_RESOLUTIONS = ["640x480", "800x600", "1024x768", "1280x720", "1280x800", "1600x900", "1920x1080", "2560x1440"]
 
 
+def monitor_refresh() -> int | None:
+    """Frecuencia (Hz) del monitor con el foco, en Hyprland."""
+    import json
+    if not shutil.which("hyprctl"):
+        return None
+    try:
+        mons = json.loads(subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True,
+                                         timeout=3).stdout)
+        m = next((m for m in mons if m.get("focused")), mons[0])
+        return round(float(m.get("refreshRate") or 0)) or None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
 def monitor_resolution() -> tuple[int, int] | None:
     """Resolución del monitor con el foco (Hyprland); None si no se puede saber."""
     import json
@@ -89,6 +103,8 @@ def gamescope_command(opts: LaunchOptions, output: tuple[int, int] | None) -> li
     if mode == "fullscreen":
         extra = [a for a in extra if a not in ("-f", "--fullscreen")]   # el antiguo valor por defecto era «-f»
     args += extra
+    if opts.fps_limit and int(opts.fps_limit) > 0 and "-r" not in args:
+        args += ["-r", str(int(opts.fps_limit))]
     if opts.mangohud and "--mangoapp" not in args:
         args.append("--mangoapp")
     return args
@@ -198,10 +214,21 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
             wrappers.append("gamemoderun")
         else:
             warnings.append(_('gamemode no está instalado (sudo pacman -S gamemode lib32-gamemode).'))
+    fps = int(opts.fps_limit or 0)
     if opts.mangohud:
         env["MANGOHUD_CONFIG"] = mangohud_config(opts.mangohud_preset, opts.mangohud_position)
         if not opts.gamescope:
             env["MANGOHUD"] = "1"
+    # Límite de FPS: con gamescope, su «-r»; si no, el limitador de MangoHud (sirve para DXVK y
+    # VKD3D, también con la superposición oculta); sin MangoHud, las variables de Proton.
+    if fps > 0 and not opts.gamescope:
+        if shutil.which("mangohud"):
+            base = env.get("MANGOHUD_CONFIG", "no_display")
+            env["MANGOHUD_CONFIG"] = f"{base},fps_limit={fps}"
+            env["MANGOHUD"] = "1"
+        else:
+            env["DXVK_FRAME_RATE"] = env["VKD3D_FRAME_RATE"] = str(fps)
+            warnings.append(_("Sin MangoHud el límite de FPS depende de tu Proton (DXVK_FRAME_RATE)."))
 
     env.update(opts.env)  # las variables del usuario siempre ganan
     argv = wrappers + cmd + (args or []) + shlex.split(opts.args or "")

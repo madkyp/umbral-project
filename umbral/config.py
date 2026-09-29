@@ -32,6 +32,7 @@ class LaunchOptions:
     mangohud: bool | None = None
     mangohud_preset: str | None = None  # "fps" | "basic" | "full"
     mangohud_position: str | None = None
+    fps_limit: int | None = None        # 0 = sin límite
     gamescope: bool | None = None
     gamescope_args: str | None = None      # argumentos extra
     gs_resolution: str | None = None       # resolución del juego «WxH»; "" = la de la pantalla

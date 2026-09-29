@@ -72,6 +72,23 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(launcher.gamescope_command(o, None),
                          ["-b", "-S", "fit", "-F", "linear", "--force-grab-cursor", "--mangoapp"])
 
+    def test_fps_limit(self):
+        self.bnet.options = LaunchOptions(fps_limit=120)
+        with mock.patch("shutil.which", side_effect=lambda c: f"/usr/bin/{c}" if c in ("umu-run", "mangohud") else None):
+            plan = launcher.build(self.cfg, self.bnet, "a.exe", runners=[self.r])
+        self.assertEqual(plan.env["MANGOHUD"], "1")
+        self.assertEqual(plan.env["MANGOHUD_CONFIG"], "no_display,fps_limit=120")   # límite sin superposición
+        self.bnet.options = LaunchOptions(fps_limit=60, mangohud=True, mangohud_preset="fps")
+        with mock.patch("shutil.which", side_effect=lambda c: f"/usr/bin/{c}" if c in ("umu-run", "mangohud") else None):
+            plan = launcher.build(self.cfg, self.bnet, "a.exe", runners=[self.r])
+        self.assertTrue(plan.env["MANGOHUD_CONFIG"].startswith("fps_only,position=") and
+                        plan.env["MANGOHUD_CONFIG"].endswith(",fps_limit=60"))
+        self.bnet.options = LaunchOptions(fps_limit=60)                     # sin MangoHud: variables de Proton
+        plan = launcher.build(self.cfg, self.bnet, "a.exe", runners=[self.r])
+        self.assertEqual((plan.env["DXVK_FRAME_RATE"], plan.env["VKD3D_FRAME_RATE"]), ("60", "60"))
+        self.assertTrue(plan.warnings)
+        self.assertIn("-r", launcher.gamescope_command(LaunchOptions(fps_limit=60), None))   # con gamescope
+
     def test_mangohud_presets(self):
         self.bnet.options = LaunchOptions(mangohud=True, mangohud_preset="fps", mangohud_position="top-right")
         plan = launcher.build(self.cfg, self.bnet, "a.exe", runners=[self.r])

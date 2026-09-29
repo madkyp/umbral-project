@@ -12,7 +12,7 @@ from .. import library, wowconfig
 from ..config import BATTLENET_ID, Game, LaunchOptions
 from ..controller import Controller
 from ..launcher import (GS_FILTERS, GS_MODES, GS_RESOLUTIONS, GS_SCALERS, MANGOHUD_POSITIONS, MANGOHUD_PRESETS,
-                        effective_options, monitor_resolution)
+                        effective_options, monitor_refresh, monitor_resolution)
 from ..i18n import _
 
 # (campo, título, descripción/variable)
@@ -237,6 +237,23 @@ class GameSettings(Adw.PreferencesDialog):
     def _gamescope_group(self) -> Adw.PreferencesGroup:
         """Resolución y escalado con gamescope, en opciones legibles."""
         grp = Adw.PreferencesGroup(title=_("Pantalla"))
+        hz = monitor_refresh()
+        opts = [0, 30, 60, 90, 120, 144, 165, 240]
+        if hz and hz not in opts:
+            opts.append(hz)
+            opts.sort()
+        cur_fps = int(self.eff.fps_limit or 0)
+        if cur_fps not in opts:
+            opts.append(cur_fps)
+            opts.sort()
+        self._fps_opts = opts
+        self.fps_row = Adw.ComboRow(
+            title=_("Límite de FPS"),
+            subtitle=(_("Tu pantalla va a {0} Hz. Limitar evita que la gráfica trabaje de más (menos calor y ruido).")
+                      .format(hz) if hz else _("Limitar evita que la gráfica trabaje de más (menos calor y ruido).")),
+            model=Gtk.StringList.new([_("Sin límite") if v == 0 else f"{v} FPS" for v in opts]),
+            selected=opts.index(cur_fps))
+        grp.add(self.fps_row)
         self.gs_row = Adw.ExpanderRow(title=_("Resolución y escalado (gamescope)"), show_enable_switch=True,
                                       subtitle=_("Agranda juegos de baja resolución (p. ej. RPG Maker a 640×480) "
                                                  "a toda tu pantalla"),
@@ -375,6 +392,9 @@ class GameSettings(Adw.PreferencesDialog):
         pos = self._mh_positions[self.mh_pos.get_selected()]
         if pos != (self.eff.mangohud_position or "top-left") or t.mangohud_position is not None:
             t.mangohud_position = pos
+        fps = self._fps_opts[self.fps_row.get_selected()]
+        if fps != int(self.eff.fps_limit or 0) or t.fps_limit is not None:
+            t.fps_limit = fps
         on = self.gs_row.get_enable_expansion()
         if on != bool(self.eff.gamescope) or t.gamescope is not None:
             t.gamescope = on

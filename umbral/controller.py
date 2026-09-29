@@ -249,6 +249,7 @@ class Controller:
             self.emit("state", key, st)
             if st in (State.EXITED, State.ERROR):
                 self._session_end(key)
+                self._auto_wtf_backup(key)
             if st == State.EXITED and notify_user:
                 integration.notify(_('{0} se ha cerrado').format(name))
             elif st == State.ERROR:
@@ -526,6 +527,48 @@ class Controller:
                 return
             GLib.idle_add(lambda: (self.set_cover(game_id, str(path)), False)[1])
         threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------ copias de WTF (WoW)
+    def has_wtf(self, g: Game | None) -> bool:
+        return bool(g and g.kind == "blizzard" and g.exe and wowconfig.wtf_dir(g.exe).is_dir())
+
+    def backup_wtf(self, game_id: str, reason: str = "", quiet: bool = False) -> None:
+        g = self.cfg.game(game_id)
+        if not self.has_wtf(g):
+            if not quiet:
+                self.error(_("El juego aún no tiene carpeta WTF (ábrelo una vez)."))
+            return
+
+        def work():
+            try:
+                dest = wowconfig.backup_wtf(g.exe, game_id, reason)
+            except (OSError, FileNotFoundError) as e:
+                self.error(_("No se pudo copiar la configuración: {0}").format(e))
+                return
+            self.append_log(game_id, _("# Copia de la configuración (WTF): {0}").format(dest))
+            if not quiet:
+                self.emit("toast", _("Copia de la configuración guardada"))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _auto_wtf_backup(self, key: str) -> None:
+        """Al cerrar WoW: copia de WTF si la última tiene más de 12 horas."""
+        g = self.cfg.game(key)
+        if self.has_wtf(g) and wowconfig.needs_auto_backup(key):
+            self.backup_wtf(key, "auto", quiet=True)
+
+    def restore_wtf(self, game_id: str, archive: Path) -> None:
+        g = self.cfg.game(game_id)
+        if g is None:
+            return
+        if self.is_running(game_id):
+            self.error(_("Cierra el juego antes de restaurar su configuración."))
+            return
+        try:
+            wowconfig.restore_wtf(g.exe, game_id, archive)
+        except OSError as e:
+            self.error(_("No se pudo restaurar la configuración: {0}").format(e))
+            return
+        self.emit("toast", _("Configuración restaurada (la anterior quedó guardada como copia)"))
 
     # ------------------------------------------------------------ tiempo de juego
     def _tracks_time(self, key: str) -> bool:

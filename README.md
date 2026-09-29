@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.9.2](https://img.shields.io/badge/version-0.9.2-informational)
+![Version 0.9.3](https://img.shields.io/badge/version-0.9.3-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -64,6 +64,8 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 - **Runner**: GE-Proton, UMU-Proton, Proton-CachyOS or system Wine. GE-Proton and UMU-Proton download from their official GitHub releases, **verified with SHA-512**.
 - **Automatic prefix backup** before a prefix switches Proton version (no games inside, ~300 MB, restorable from *Repair*).
 - **Graphics API** for WoW: automatic, DirectX 12 (VKD3D-Proton) or DirectX 11 (DXVK), written to `Config.wtf`.
+- **WoW configuration backups** (`WTF`: settings, macros, bars and addon data): automatic when the game closes (at most every 12 h, last 10 kept), on demand from the card menu, and restorable — the current configuration is always saved first.
+- **FPS limit** per game (30…240 or your monitor's refresh rate): MangoHud's limiter — works for DXVK and VKD3D even with the overlay hidden — or gamescope's when scaling is on.
 - **Resolution and scaling with gamescope**: pick the game's resolution (e.g. 640×480 for RPG Maker games), fullscreen / borderless / window, fit / integer / stretch scaling and a sharp filter for pixel art — the output resolution is read from your monitor.
 - **MangoHud** overlay (FPS only / basic / full, any corner), GameMode, esync/fsync/ntsync, WineD3D, Wayland driver, per-prefix shader cache, launch arguments and environment variables.
 

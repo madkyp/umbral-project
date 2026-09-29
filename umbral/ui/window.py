@@ -384,6 +384,9 @@ class MainWindow(Adw.ApplicationWindow):
             m.append(_('Restaurar icono original'), f"win.icon-clear::{g.id}")
         if self.ctl.can_move(g):
             m.append(_("Mover a la carpeta de juegos"), f"win.game-move::{g.id}")
+        if self.ctl.has_wtf(g):
+            m.append(_("Copia de la configuración (WTF)"), f"win.wtf-backup::{g.id}")
+            m.append(_("Restaurar configuración (WTF)…"), f"win.wtf-restore::{g.id}")
         m.append(_('Quitar de la biblioteca'), f"win.game-remove::{g.id}")
         actions.append(Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=m,
                                       css_classes=["flat", "circular"], valign=Gtk.Align.CENTER))
@@ -505,6 +508,8 @@ class MainWindow(Adw.ApplicationWindow):
         act("game-remove", self._remove_game, True)
         act("game-move", self._move_game, True)
         act("game-folder", self._open_game_folder, True)
+        act("wtf-backup", lambda gid: self.ctl.backup_wtf(gid), True)
+        act("wtf-restore", self._restore_wtf, True)
         act("refresh", lambda _a: self._refresh())
         self.get_application().set_accels_for_action("win.refresh", ["F5"])
         act("cover-pick", self._pick_cover, True)
@@ -630,6 +635,43 @@ class MainWindow(Adw.ApplicationWindow):
             self.ctl.error(_("La carpeta del juego no existe: {0}").format(folder))
             return
         Gtk.FileLauncher(file=Gio.File.new_for_path(str(folder))).launch(self, None, None)
+
+    def _restore_wtf(self, gid: str):
+        """Lista las copias de WTF del juego y restaura la elegida."""
+        from .. import wowconfig
+        g = self.ctl.cfg.game(gid)
+        backups = wowconfig.list_wtf_backups(gid)
+        if g is None:
+            return
+        if not backups:
+            self.ctl.error(_("Aún no hay copias. Se crean solas al cerrar el juego, o desde «Copia de la configuración»."))
+            return
+        dlg = Adw.Dialog(title=_("Restaurar configuración de {0}").format(g.name), content_width=520,
+                         content_height=460)
+        tv = Adw.ToolbarView()
+        tv.add_top_bar(Adw.HeaderBar())
+        page = Adw.PreferencesPage()
+        grp = Adw.PreferencesGroup(description=_("Se sustituye la carpeta WTF (ajustes, macros, barras y datos de "
+                                                 "addons). La configuración actual se guarda antes como copia."))
+        for b in backups:
+            stamp = b.name.split(".")[0]
+            date = f"{stamp[6:8]}/{stamp[4:6]}/{stamp[0:4]} {stamp[9:11]}:{stamp[11:13]}"
+            kind = _("automática") if "-auto" in b.name else (_("antes de restaurar") if "antes" in b.name
+                                                              else _("manual"))
+            row = Adw.ActionRow(use_markup=False, title=date,
+                                subtitle=f"{kind} · {installers.human_size(b.stat().st_size)}")
+            btn = Gtk.Button(label=_('Restaurar'), valign=Gtk.Align.CENTER)
+
+            def do(_b, arch=b):
+                self.ctl.restore_wtf(gid, arch)
+                dlg.close()
+            btn.connect("clicked", do)
+            row.add_suffix(btn)
+            grp.add(row)
+        page.add(grp)
+        tv.set_content(page)
+        dlg.set_child(tv)
+        dlg.present(self)
 
     def _move_game(self, gid: str):
         g = self.ctl.cfg.game(gid)

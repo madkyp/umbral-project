@@ -72,5 +72,31 @@ class TestCrashReport(unittest.TestCase):
             self.assertIsNone(wowconfig.crash_report(str(exe), start + 3600))   # informes viejos: no
 
 
+
+class TestWTFBackup(unittest.TestCase):
+    def test_backup_restore_and_auto(self):
+        import time
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(wowconfig, "wtf_backup_dir", lambda k: Path(d) / "backups" / k):
+            exe = Path(d) / "_classic_beta_" / "WowB.exe"
+            wtf = exe.parent / "WTF"
+            (wtf / "Account").mkdir(parents=True)
+            exe.write_bytes(b"MZ")
+            (wtf / "Config.wtf").write_text('SET gxApi "D3D12"\r\n')
+            (wtf / "Account" / "macros-cache.txt").write_text("MACRO 1")
+            self.assertTrue(wowconfig.needs_auto_backup("wow"))
+            first = wowconfig.backup_wtf(str(exe), "wow")
+            self.assertFalse(wowconfig.needs_auto_backup("wow"))                      # recién hecha
+            self.assertTrue(wowconfig.needs_auto_backup("wow", time.time() + 13 * 3600))
+            (wtf / "Account" / "macros-cache.txt").write_text("MACRO ROTA")           # el usuario rompe algo
+            (wtf / "nuevo.txt").write_text("x")
+            time.sleep(1.1)
+            safety = wowconfig.restore_wtf(str(exe), "wow", first)
+            self.assertEqual((wtf / "Account" / "macros-cache.txt").read_text(), "MACRO 1")
+            self.assertFalse((wtf / "nuevo.txt").exists())                            # restauración exacta
+            self.assertIn("antes-de-restaurar", safety.name)
+            self.assertEqual(len(wowconfig.list_wtf_backups("wow")), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

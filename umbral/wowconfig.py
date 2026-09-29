@@ -92,3 +92,66 @@ def crash_advice(summary: str) -> str:
         return _("Fallo del módulo de voz / texto a voz de WoW (Windows lo usa y Wine no lo implementa). "
                  "Prueba a desactivar el chat de voz y el texto a voz en las opciones del juego.")
     return ""
+
+
+# ---------------------------------------------------------------- copias de WTF
+# WTF guarda la configuración de WoW: ajustes, macros, barras y los datos de los addons
+# (SavedVariables). Ocupa poco, así que se copia entera en tar.zst.
+KEEP_WTF_BACKUPS = 10
+AUTO_BACKUP_EVERY = 12 * 3600
+
+
+def wtf_dir(exe: str) -> Path:
+    return Path(exe).parent / "WTF"
+
+
+def wtf_backup_dir(game_key: str) -> Path:
+    from . import paths
+    return paths.DATA_HOME / "umbral" / "backups" / "wtf" / game_key.replace(":", "_").replace("/", "_")
+
+
+def list_wtf_backups(game_key: str) -> list[Path]:
+    """Copias de la más reciente a la más antigua."""
+    return sorted(wtf_backup_dir(game_key).glob("*.tar.zst"), reverse=True)
+
+
+def backup_wtf(exe: str, game_key: str, reason: str = "") -> Path:
+    import subprocess
+    import time
+    src = wtf_dir(exe)
+    if not src.is_dir():
+        raise FileNotFoundError(_("El juego aún no tiene carpeta WTF (ábrelo una vez)."))
+    dest_dir = wtf_backup_dir(game_key)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    tag = f"-{reason}" if reason else ""
+    dest = dest_dir / f"{time.strftime('%Y%m%d-%H%M%S')}{tag}.tar.zst"
+    r = subprocess.run(["tar", "--zstd", "-cf", str(dest), "-C", str(src.parent), "WTF"],
+                       capture_output=True, text=True)
+    if r.returncode not in (0, 1):
+        dest.unlink(missing_ok=True)
+        raise OSError(r.stderr.strip()[-300:])
+    for old in list_wtf_backups(game_key)[KEEP_WTF_BACKUPS:]:
+        old.unlink(missing_ok=True)
+    return dest
+
+
+def needs_auto_backup(game_key: str, now: float | None = None) -> bool:
+    import time
+    backups = list_wtf_backups(game_key)
+    if not backups:
+        return True
+    return (now or time.time()) - backups[0].stat().st_mtime >= AUTO_BACKUP_EVERY
+
+
+def restore_wtf(exe: str, game_key: str, archive: Path) -> Path:
+    """Restaura una copia. Antes guarda la configuración actual («antes-de-restaurar»)."""
+    import shutil
+    import subprocess
+    src = wtf_dir(exe)
+    safety = backup_wtf(exe, game_key, "antes-de-restaurar") if src.is_dir() else None
+    if src.is_dir():
+        shutil.rmtree(src)
+    r = subprocess.run(["tar", "--zstd", "-xf", str(archive), "-C", str(src.parent)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise OSError(r.stderr.strip()[-300:])
+    return safety
