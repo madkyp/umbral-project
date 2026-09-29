@@ -64,5 +64,61 @@ class TestBallThumbnail(unittest.TestCase):
             self.assertEqual(b.getpixel((128, 128))[3], 255)
 
 
+
+class TestMoveGame(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.t = Path(self.tmp.name)
+        self.downloads = self.t / "Descargas"
+        self.root = self.t / "games"
+        self.unsafe = {self.downloads.resolve(), self.t.resolve()}
+        patcher = unittest.mock.patch.object(installers, "_unsafe_dirs", lambda: self.unsafe)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_moves_game_folder_not_downloads(self):
+        game = self.downloads / "Pokémon Iberia V2" / "Pokémon Iberia V2.03"
+        (game / "Audio").mkdir(parents=True)
+        (game / "Game.exe").write_bytes(b"MZ")
+        (game / "Audio/bgm.ogg").write_bytes(b"x")
+        (self.downloads / "otra-cosa.zip").write_bytes(b"z")
+        self.assertTrue(installers.can_move(str(game / "Game.exe"), self.root, []))
+        new = installers.move_game(str(game / "Game.exe"), self.root)
+        self.assertEqual(Path(new), self.root / "Pokémon Iberia V2.03" / "Game.exe")
+        self.assertTrue((self.root / "Pokémon Iberia V2.03/Audio/bgm.ogg").exists())
+        self.assertFalse(game.exists())
+        self.assertTrue((self.downloads / "otra-cosa.zip").exists())      # Descargas intacta
+        self.assertFalse(installers.can_move(new, self.root, []))          # ya está en su sitio
+
+    def test_loose_exe_in_downloads_moves_only_the_file(self):
+        self.downloads.mkdir()
+        exe = self.downloads / "juego.exe"
+        exe.write_bytes(b"MZ")
+        (self.downloads / "foto.jpg").write_bytes(b"j")
+        new = installers.move_game(str(exe), self.root)
+        self.assertEqual(Path(new), self.root / "juego" / "juego.exe")
+        self.assertTrue((self.downloads / "foto.jpg").exists())
+
+    def test_unreal_layout_and_name_clash(self):
+        exe = self.downloads / "MiJuego/Binaries/Win64/MiJuego.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"MZ")
+        (self.root / "MiJuego").mkdir(parents=True)              # ya existe una carpeta con ese nombre
+        new = installers.move_game(str(exe), self.root)
+        self.assertEqual(Path(new), self.root / "MiJuego (2)/Binaries/Win64/MiJuego.exe")
+
+    def test_installers_and_prefix_files_are_not_moved(self):
+        setup = self.downloads / "setup.exe"
+        setup.parent.mkdir(parents=True)
+        setup.write_bytes(b"MZ")
+        self.assertFalse(installers.can_move(str(setup), self.root, []))
+        pfx = self.t / "pfx"
+        inside = pfx / "drive_c/Program Files/X/x.exe"
+        inside.parent.mkdir(parents=True)
+        inside.write_bytes(b"MZ")
+        self.assertFalse(installers.can_move(str(inside), self.root, [str(pfx)]))
+
+
 if __name__ == "__main__":
     unittest.main()

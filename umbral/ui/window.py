@@ -20,7 +20,7 @@ from ..i18n import _
 CARD_WIDTH = 276   # ancho fijo de todas las tarjetas (el que tenía la de WoW Forever)
 
 CHIP = {State.RUNNING: "running", State.STARTING: "starting", State.STOPPING: "starting",
-        State.ERROR: "error", _('Comprobando versión'): "starting"}
+        State.ERROR: "error", _('Comprobando versión'): "starting", _("Moviendo…"): "starting"}
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -348,6 +348,8 @@ class MainWindow(Adw.ApplicationWindow):
         m.append(_('Cambiar icono…'), f"win.icon-pick::{g.id}")
         if g.icon:
             m.append(_('Restaurar icono original'), f"win.icon-clear::{g.id}")
+        if self.ctl.can_move(g):
+            m.append(_("Mover a la carpeta de juegos"), f"win.game-move::{g.id}")
         m.append(_('Quitar de la biblioteca'), f"win.game-remove::{g.id}")
         actions.append(Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=m,
                                       css_classes=["flat", "circular"], valign=Gtk.Align.CENTER))
@@ -449,6 +451,7 @@ class MainWindow(Adw.ApplicationWindow):
         act("bnet-restore", self._restore)
         act("shortcut", self._shortcut, True)
         act("game-remove", self._remove_game, True)
+        act("game-move", self._move_game, True)
         act("refresh", lambda _a: self._refresh())
         self.get_application().set_accels_for_action("win.refresh", ["F5"])
         act("cover-pick", self._pick_cover, True)
@@ -559,6 +562,21 @@ class MainWindow(Adw.ApplicationWindow):
             f = integration.write_game_desktop(g.id, g.name)
             self.toasts.add_toast(Adw.Toast(title=_('Acceso directo creado: {0}').format(f.name)))
 
+    def _move_game(self, gid: str):
+        g = self.ctl.cfg.game(gid)
+        if g is None:
+            return
+        src, is_dir = installers.game_source(g.exe)
+        size = installers.human_size(installers.size_of(src))
+        dlg = Adw.AlertDialog(heading=_("¿Mover «{0}»?").format(g.name),
+                              body=_("Se moverá {0} ({1}) a {2}. Umbral actualizará la ruta del juego.")
+                              .format(src if is_dir else src.name, size, self.ctl.games_root()))
+        dlg.add_response("cancel", _('Cancelar'))
+        dlg.add_response("move", _("Mover"))
+        dlg.set_response_appearance("move", Adw.ResponseAppearance.SUGGESTED)
+        dlg.connect("response", lambda _d, r: r == "move" and self.ctl.move_game_files(gid))
+        dlg.present(self)
+
     def _remove_game(self, gid: str):
         g = self.ctl.cfg.game(gid)
         if g is None:
@@ -566,14 +584,26 @@ class MainWindow(Adw.ApplicationWindow):
         p = self.ctl.cfg.prefix(g.prefix_id)
         exclusive = (p is not None and p.id != BATTLENET_ID and not p.imported
                      and [x.id for x in self.ctl.prefix_users(p.id)] == [gid] and Path(p.path).exists())
-        if not exclusive:
+        files = None
+        if self.ctl.owns_files(g):
+            src, is_dir = installers.game_source(g.exe)
+            files = src if is_dir else Path(g.exe).parent   # en la carpeta de juegos siempre hay una carpeta propia
+        if not exclusive and files is None:
             self.ctl.remove_game(gid)
             return
+        parts = []
+        if exclusive:
+            parts.append(_("su prefijo propio ({0})").format(p.path))
+        if files is not None:
+            parts.append(_("sus archivos en la carpeta de juegos ({0}, {1})")
+                         .format(files, installers.human_size(installers.size_of(files))))
         dlg = Adw.AlertDialog(heading=_("¿Quitar «{0}»?").format(g.name),
-                              body=_('Este juego tiene su propio prefijo en {0}. Puedes conservarlo (por ejemplo, si guarda partidas) o borrarlo para liberar espacio.').format(p.path))
+                              body=_("Este juego tiene {0}. Puedes conservarlo todo (por ejemplo, por las "
+                                     "partidas guardadas) o borrarlo para liberar espacio.")
+                              .format(_(" y ").join(parts)))
         dlg.add_response("cancel", _('Cancelar'))
-        dlg.add_response("keep", _('Quitar y conservar el prefijo'))
-        dlg.add_response("delete", _('Quitar y borrar el prefijo'))
+        dlg.add_response("keep", _("Quitar y conservar sus archivos"))
+        dlg.add_response("delete", _("Quitar y borrar sus archivos"))
         dlg.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
 
         def resp(_d, r):
@@ -585,11 +615,17 @@ class MainWindow(Adw.ApplicationWindow):
             self.ctl.remove_game(gid)
             if r == "delete":
                 import shutil
-                self.ctl.cfg.prefixes.remove(p)
+                targets = []
+                if exclusive:
+                    self.ctl.cfg.prefixes.remove(p)
+                    targets.append(p.path)
+                if files is not None:
+                    targets.append(str(files))
                 self.ctl.save()
-                threading.Thread(target=shutil.rmtree, args=(p.path,), kwargs={"ignore_errors": True},
-                                 daemon=True).start()
-                self.toasts.add_toast(Adw.Toast(title=_('Prefijo borrado')))
+                for t in targets:
+                    threading.Thread(target=shutil.rmtree, args=(t,), kwargs={"ignore_errors": True},
+                                     daemon=True).start()
+                self.toasts.add_toast(Adw.Toast(title=_("Archivos borrados")))
         dlg.connect("response", resp)
         dlg.present(self)
 

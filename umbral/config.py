@@ -96,6 +96,7 @@ class Settings:
     accent: str = ""          # "" = acento del sistema/tema GTK
     default_runner: str = "GE-Proton"
     prefix_root: str = str(paths.DEFAULT_PREFIX_ROOT)
+    games_root: str = str(paths.DEFAULT_PREFIX_ROOT / "games")   # donde se mueven los juegos añadidos
     run_in_tray: bool = True
     language: str = ""           # "" = el del sistema, "es" o "en" (se aplica al reiniciar)     # al cerrar la ventana, seguir en segundo plano con icono en la bandeja
     float_window: bool = True    # Hyprland: ventana flotante y centrada, como un diálogo

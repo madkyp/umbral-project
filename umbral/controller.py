@@ -36,6 +36,7 @@ class Controller:
         self._icons: dict[str, tuple[Path | None, str]] = {}   # exe -> (png, color)
         self._icon_jobs: set[str] = set()
         self.checking: set[str] = set()   # juegos comprobando versión
+        self.moving: set[str] = set()     # juegos cuyos archivos se están moviendo
         self.logs: dict[str, list[str]] = {}
         self._listeners: list[Callable[..., None]] = []
 
@@ -165,11 +166,13 @@ class Controller:
         p = self.procs.get(key)
         # «Iniciando» incluye la espera por la copia de seguridad previa a un cambio de Proton
         starting = bool(p and p.proc is None and p.state == State.STARTING)
-        return bool(p and p.running()) or starting or key in self.external
+        return bool(p and p.running()) or starting or key in self.external or key in self.moving
 
     def state(self, key: str) -> str:
         if key in self.checking:
             return _('Comprobando versión')
+        if key in self.moving:
+            return _("Moviendo…")
         if key in self.external:
             return State.RUNNING
         p = self.procs.get(key)
@@ -407,6 +410,50 @@ class Controller:
         self.cfg.prefixes.append(p)
         self.save()
         return p
+
+    def games_root(self) -> Path:
+        return Path(self.cfg.settings.games_root).expanduser()
+
+    def can_move(self, g: Game) -> bool:
+        return g.kind == "custom" and installers.can_move(g.exe, self.games_root(),
+                                                          [p.path for p in self.cfg.prefixes])
+
+    def owns_files(self, g: Game) -> bool:
+        """¿Los archivos del juego están en la carpeta de juegos de Umbral?"""
+        try:
+            return Path(g.exe).resolve().is_relative_to(self.games_root().resolve())
+        except (OSError, ValueError):
+            return False
+
+    def move_game_files(self, game_id: str) -> None:
+        """Mueve la carpeta del juego a la de Umbral (en segundo plano) y actualiza su ruta."""
+        g = self.cfg.game(game_id)
+        if g is None or not self.can_move(g):
+            return
+        if self.is_running(game_id):
+            self.error(_("Cierra el juego antes de moverlo."))
+            return
+        self.moving.add(game_id)
+        self.emit("state", game_id, _("Moviendo…"))
+
+        def work():
+            try:
+                new = installers.move_game(g.exe, self.games_root())
+            except OSError as e:
+                GLib.idle_add(lambda: (self.moving.discard(game_id), False)[1])
+                self.error(_("No se pudo mover el juego: {0}").format(e))
+                self.emit("library")
+                return
+
+            def done():
+                self.moving.discard(game_id)
+                g.exe = new
+                self.save()
+                self.emit("toast", _("«{0}» movido a {1}").format(g.name, Path(new).parent))
+                self.emit("library")
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
 
     def prefix_users(self, prefix_id: str) -> list[Game]:
         return [g for g in self.cfg.games if g.prefix_id == prefix_id]

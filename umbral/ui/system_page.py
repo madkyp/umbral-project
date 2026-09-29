@@ -1,6 +1,8 @@
 """Página Sistema: diagnóstico de GPU, runners, Hyprland y apariencia."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import threading
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
@@ -102,7 +104,8 @@ class SystemPage(Adw.PreferencesPage):
 
         pg = Adw.PreferencesGroup(title=_('Rutas'))
         for title, p in ((_("Configuración"), paths.CONFIG_FILE), (_("Registros"), paths.LOG_DIR),
-                         (_('Runners descargados'), paths.RUNNER_INSTALL_DIR)):
+                         (_('Runners descargados'), paths.RUNNER_INSTALL_DIR),
+                         (_("Carpeta de juegos"), Path(self.ctl.cfg.settings.games_root))):
             r = Adw.ActionRow(use_markup=False, title=title, subtitle=str(p), subtitle_selectable=True)
             b = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
                            tooltip_text=_('Abrir carpeta'))

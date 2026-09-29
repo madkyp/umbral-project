@@ -46,6 +46,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
   - `.exe` files, `.msi` installers (run through `msiexec`) and `.bat` scripts (through `cmd`).
   - Each one in its **own prefix** (recommended) or in the Battle.net one.
   - After running an **installer**, Umbral lists the new executables it left behind and adds the game with one click.
+  - **Moves the game into Umbral's games folder** (`~/Games/umbral/games/`, on by default) so it doesn't live in *Downloads* waiting to be deleted by accident. Only the game's own folder moves — a loose `.exe` in *Downloads* moves alone, `bin/` or `Binaries/Win64/` layouts move from the game's root, and installers are never moved. Already-added games can be moved from their ⋮ menu, and removing a game offers to delete its files too (never without asking).
 - Covers use the **game's own icon** (extracted from the `.exe`) over its dominant colour, or any **cover image / icon** you pick.
 
 ### 🖥️ GPU aware — NVIDIA, AMD and hybrids
@@ -164,7 +165,7 @@ Your prefixes (`~/Games/umbral/`) and settings (`~/.config/umbral/`) are left un
 | `controller.py` | App state and orchestration, independent of the widgets |
 | `ui/` · `tray.py` | libadwaita windows and dialogs · StatusNotifierItem + dbusmenu over D-Bus |
 
-Settings live in `~/.config/umbral/config.json`, logs in `~/.local/state/umbral/logs/`, downloaded runners and backups in `~/.local/share/umbral/`.
+Settings live in `~/.config/umbral/config.json`, logs in `~/.local/state/umbral/logs/`, downloaded runners and backups in `~/.local/share/umbral/`, prefixes and moved games in `~/Games/umbral/`.
 
 ### Tests
 

@@ -38,6 +38,14 @@ class AddGameDialog(Adw.Dialog):
         self.name_row = Adw.EntryRow(title=_('Nombre'))
         g.add(self.name_row)
         page.add(g)
+        self.hint = Adw.ActionRow(use_markup=False, visible=False, css_classes=["dim-label"],
+                                  title=_('Parece un instalador: cuando termine, Umbral te propondrá añadir el juego que haya instalado.'))
+        hg = Adw.PreferencesGroup()
+        hg.add(self.hint)
+        self.move_row = Adw.SwitchRow(use_markup=False, visible=False, active=True,
+                                      title=_("Mover a la carpeta de juegos de Umbral"))
+        hg.add(self.move_row)
+        page.add(hg)
 
         pg = Adw.PreferencesGroup(title=_('Prefijo de Wine'),
                                   description=_('Un prefijo propio evita mezclar librerías y versiones de Proton con Battle.net.'))
@@ -60,11 +68,6 @@ class AddGameDialog(Adw.Dialog):
         pg.add(self.runner_row)
         page.add(pg)
 
-        self.hint = Adw.ActionRow(use_markup=False, visible=False, css_classes=["dim-label"],
-                                  title=_('Parece un instalador: cuando termine, Umbral te propondrá añadir el juego que haya instalado.'))
-        hg = Adw.PreferencesGroup()
-        hg.add(self.hint)
-        page.add(hg)
 
         tv.set_content(page)
         self.set_child(tv)
@@ -93,8 +96,22 @@ class AddGameDialog(Adw.Dialog):
             if not self.name_row.get_text().strip():
                 self.name_row.set_text(Path(self.exe).stem)
             self.hint.set_visible(installers.is_installer(self.exe))
+            self._sync_move()
             self.add_btn.set_sensitive(True)
         dlg.open(self.get_root(), None, done)
+
+    def _sync_move(self):
+        """Explica qué se moverá (la carpeta del juego o solo el archivo) y cuánto ocupa."""
+        root = self.ctl.games_root()
+        ok = installers.can_move(self.exe, root, [p.path for p in self.ctl.cfg.prefixes])
+        self.move_row.set_visible(ok)
+        if not ok:
+            return
+        src, is_dir = installers.game_source(self.exe)
+        size = installers.human_size(installers.size_of(src))
+        what = _("la carpeta «{0}»").format(src.name) if is_dir else _("el archivo «{0}»").format(src.name)
+        self.move_row.set_subtitle(_("Se moverá {0} ({1}) a {2}, para no perderlo si borras la carpeta original.")
+                                   .format(what, size, root))
 
     def _add(self, *_a):
         name = self.name_row.get_text().strip() or Path(self.exe).stem
@@ -103,5 +120,7 @@ class AddGameDialog(Adw.Dialog):
             runner = self._runner_names[self.runner_row.get_selected()]
             pid = self.ctl.create_prefix(name, runner).id
         g = self.ctl.add_custom_game(name, self.exe, pid)
+        if self.move_row.get_visible() and self.move_row.get_active():
+            self.ctl.move_game_files(g.id)
         self.close()
         self.on_added(g)
