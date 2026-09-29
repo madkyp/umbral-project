@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.9.0](https://img.shields.io/badge/version-0.9.0-informational)
+![Version 0.9.1](https://img.shields.io/badge/version-0.9.1-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -163,7 +163,7 @@ Your prefixes (`~/Games/umbral/`) and settings (`~/.config/umbral/`) are left un
 | `umbral --check` | Terminal diagnostics: GPU, packages, runners, prefix, detected games |
 | `umbral --debug` | Detailed logs, including GPU info and every environment variable applied (`PROTON_LOG`, `UMU_LOG`) |
 
-- **F5** refreshes the library, **Ctrl+L** opens the log console.
+- **F5** refreshes the library, **Ctrl+L** opens or closes the log console (**Esc** closes it).
 
 ### Hyprland (optional)
 *System → Hyprland → Suggested snippet* generates Lua rules (Hyprland Lua config) for Umbral, Battle.net and WoW plus a `SUPER + G` keybind. It is validated with `Hyprland --verify-config` but **never written to your config** — copy it yourself. A copy lives in [`hyprland-snippet.lua`](hyprland-snippet.lua).

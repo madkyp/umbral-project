@@ -404,10 +404,14 @@ class MainWindow(Adw.ApplicationWindow):
         bar.append(Gtk.Box(hexpand=True))
         for icon, tip, cb in (("edit-copy-symbolic", _("Copiar"), self._copy_console),
                               ("document-save-symbolic", _('Abrir archivo de registro'), self._open_logfile),
-                              ("edit-clear-all-symbolic", _("Limpiar"), self._clear_console)):
+                              ("user-trash-symbolic", _("Limpiar"), self._clear_console)):
             b = Gtk.Button(icon_name=icon, tooltip_text=tip, css_classes=["flat"])
             b.connect("clicked", cb)
             bar.append(b)
+        close = Gtk.Button(icon_name="window-close-symbolic", tooltip_text=_("Cerrar el registro (Esc)"),
+                           css_classes=["flat", "circular"])
+        close.connect("clicked", lambda *_a: self.console_btn.set_active(False))
+        bar.append(close)
         box.append(bar)
         self.console_view = Gtk.TextView(editable=False, monospace=True, cursor_visible=False,
                                          wrap_mode=Gtk.WrapMode.WORD_CHAR, css_classes=["console"])
@@ -444,6 +448,19 @@ class MainWindow(Adw.ApplicationWindow):
         adj = self.console_scroll.get_vadjustment()
         GLib.idle_add(lambda: (adj.set_value(adj.get_upper()), False)[1])
 
+    def _toggle_console(self):
+        if self.console_btn.get_active():
+            self.console_btn.set_active(False)
+        else:
+            self._show_console(self.console_key)
+
+    def _esc_console(self, *_a):
+        """Esc cierra el registro si está abierto (si no, deja pasar la tecla)."""
+        if self.console_btn.get_active():
+            self.console_btn.set_active(False)
+            return True
+        return False
+
     def _show_console(self, key: str):
         self.console_key = key
         self._refresh_keys()
@@ -471,6 +488,7 @@ class MainWindow(Adw.ApplicationWindow):
             self.add_action(a)
         pfx = lambda: self.ctl.cfg.battlenet_prefix()  # noqa: E731
         act("bnet-log", lambda _a: self._show_console(BATTLENET_ID))
+        act("toggle-log", lambda _a: self._toggle_console())
         act("game-log", self._show_console, True)
         act("bnet-folder", lambda _a: Gtk.FileLauncher(file=Gio.File.new_for_path(pfx().path)).launch(self, None, None))
         act("bnet-winecfg", lambda _a: self.ctl.run("winecfg", BATTLENET_ID, "winecfg", notify_user=False)
@@ -493,7 +511,11 @@ class MainWindow(Adw.ApplicationWindow):
         act("cover-clear", lambda gid: self.ctl.set_cover(gid, None), True)
         act("icon-pick", lambda gid: self._pick_cover(gid, "icon"), True)
         act("icon-clear", lambda gid: self.ctl.set_cover(gid, None, "icon"), True)
-        self.get_application().set_accels_for_action("win.bnet-log", ["<Control>l"])
+        self.get_application().set_accels_for_action("win.toggle-log", ["<Control>l"])
+        esc = Gtk.ShortcutController(scope=Gtk.ShortcutScope.MANAGED)
+        esc.add_shortcut(Gtk.Shortcut(trigger=Gtk.ShortcutTrigger.parse_string("Escape"),
+                                      action=Gtk.CallbackAction.new(self._esc_console)))
+        self.add_controller(esc)
 
     def _need_stopped(self) -> bool:
         if self.ctl.running_in_prefix(BATTLENET_ID):

@@ -1,6 +1,6 @@
 # Maintainer: madky
 pkgname=umbral
-pkgver=0.9.0
+pkgver=0.9.1
 pkgrel=1
 pkgdesc="Minimal Battle.net launcher for Arch/Hyprland: official client, WoW Forever, umu + Proton (GTK4/libadwaita)"
 arch=('any')
