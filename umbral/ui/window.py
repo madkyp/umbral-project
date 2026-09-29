@@ -189,16 +189,35 @@ class MainWindow(Adw.ApplicationWindow):
             self._tint_css.load_from_string("\n".join(self._tints.values()))
         return cls
 
+    def _cover_class(self, image: str, color: str) -> str:
+        """Clase CSS con la imagen como fondo encajado (contain) sobre su color."""
+        uri = Gio.File.new_for_path(image).get_uri()
+        cls = "cvr-" + format(zlib.crc32(f"{uri}|{color}".encode()), "x")
+        if cls not in self._tints:
+            self._tints[cls] = (
+                f'.cover.{cls} {{ background-image: url("{uri}"), radial-gradient(circle at 50% 50%, '
+                f"alpha({color}, 0.45), transparent 70%), linear-gradient(160deg, "
+                f"color-mix(in srgb, {color} 35%, #10131c), #0b0e15); "
+                "background-size: contain, auto, auto; background-repeat: no-repeat; "
+                "background-position: center; }")
+            self._tint_css.load_from_string("\n".join(self._tints.values()))
+        return cls
+
     def _cover(self, g: Game) -> Gtk.Widget:
         """Portada: la imagen elegida (portada o icono) o la del juego, siempre en el hueco
         del logo y sobre su color, para que todas las tarjetas midan lo mismo."""
         cover = Gtk.Overlay(css_classes=["cover"], overflow=Gtk.Overflow.HIDDEN)
-        icon = None
         if g.cover and Path(g.cover).exists():
-            thumb = exeicon.ball_thumbnail(g.cover, crop=True)
-            icon = (thumb, exeicon.dominant_color(thumb)) if thumb else None
-        if icon is None:
-            icon = self.ctl.game_icon(g)
+            # Portada entera (sin recorte ni zoom) de borde a borde: fondo CSS con «contain»,
+            # que no cambia el tamaño de la tarjeta; los huecos llevan el color de la imagen.
+            try:
+                color = exeicon.dominant_color(Path(g.cover))
+            except OSError:
+                color = "#2a3350"
+            cover.add_css_class(self._cover_class(g.cover, color))
+            cover.set_child(Gtk.Box())
+            return cover
+        icon = self.ctl.game_icon(g)
         if icon and icon[0]:
             png, color = icon
             cover.add_css_class(self._tint_class(color))
