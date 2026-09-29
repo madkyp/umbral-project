@@ -189,6 +189,7 @@ class GameProcess:
         self.proc: subprocess.Popen | None = None
         self.state = State.STARTING
         self.returncode: int | None = None
+        self.started = time.time()
         self.hints: list[str] = []
         paths.LOG_DIR.mkdir(parents=True, exist_ok=True)
         self.log_path = paths.LOG_DIR / f"{key}-{time.strftime('%Y%m%d-%H%M%S')}.log"
@@ -227,6 +228,7 @@ class GameProcess:
         for line in self.proc.stdout:
             self._emit(line.rstrip("\n"))
         self.returncode = self.proc.wait()
+        self._emit(_("# Proceso terminado con código {0}").format(self.returncode))
         ok = self.returncode == 0 or self.state == State.STOPPING
         self._set(State.EXITED if ok else State.ERROR, self.returncode)
 

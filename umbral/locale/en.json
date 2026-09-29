@@ -11,6 +11,9 @@
  " y ": " and ",
  " ya está listo para lanzarse.": " is ready to launch.",
  " · pantalla principal": " · main display",
+ "# El juego no dejó informe de error en Errors/ (cierre sin volcado).": "# The game left no error report in Errors/ (closed without a dump).",
+ "# Informe completo: {0}": "# Full report: {0}",
+ "# Proceso terminado con código {0}": "# Process exited with code {0}",
  "(el del prefijo: ": "(prefix default: ",
  "(ninguna: con una sola GPU el driver ya la usa)": "(none: with a single GPU the driver already uses it)",
  "; importable: {0}": "; importable: {0}",
@@ -144,6 +147,7 @@
  "Este juego tiene {0}. Puedes conservarlo todo (por ejemplo, por las partidas guardadas) o borrarlo para liberar espacio.": "This game has {0}. You can keep everything (for example, for its save games) or delete it to free space.",
  "FPS, temperaturas y uso de CPU/GPU en pantalla · Shift derecho + F12 lo oculta en partida": "On-screen FPS, temperatures and CPU/GPU usage · Right Shift + F12 hides it in game",
  "Fallo de swapchain (pantalla negra). Prueba con PROTON_ENABLE_WAYLAND desactivado, sin gamescope, o reinicia el juego.": "Swapchain failure (black screen). Try with PROTON_ENABLE_WAYLAND off, without gamescope, or restart the game.",
+ "Fallo del módulo de voz / texto a voz de WoW (Windows lo usa y Wine no lo implementa). Prueba a desactivar el chat de voz y el texto a voz en las opciones del juego.": "WoW's voice / text-to-speech module failed (it relies on a Windows part Wine doesn't implement). Try turning off voice chat and text-to-speech in the game's options.",
  "Falta drive_c/windows/system32: prefijo dañado.": "drive_c/windows/system32 is missing: damaged prefix.",
  "Faltan paquetes gráficos (Vulkan de 32/64 bits): ": "Missing graphics packages (32/64-bit Vulkan): ",
  "Flotante y centrada sobre las demás, como un diálogo. Se aplica al reiniciar Umbral; no modifica tu configuración de Hyprland.": "Floating and centred above other windows, like a dialog. Applied when Umbral restarts; your Hyprland configuration is not modified.",
@@ -374,6 +378,7 @@
  "¿Recrear el prefijo?": "Recreate the prefix?",
  "¿Restaurar la copia del prefijo?": "Restore the prefix backup?",
  "Ábrelo desde su icono de la bandeja; «Salir» en su menú lo cierra del todo.": "Open it from its tray icon; “Quit” in its menu closes it completely.",
+ "⚠ Informe de error de WoW: {0}": "⚠ WoW error report: {0}",
  "⚠ Se pidió {0} pero se usa otra GPU.": "⚠ {0} was requested but another GPU is in use.",
  "✔ Hyprland acepta el fragmento": "✔ Hyprland accepts the snippet"
 }

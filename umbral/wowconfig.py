@@ -55,3 +55,40 @@ def set_cvar(path: Path, name: str, value: str | None) -> None:
     tmp = path.with_suffix(".umbral-tmp")
     tmp.write_bytes((eol.join(lines) + eol).encode("utf-8"))
     tmp.replace(path)
+
+
+# ---------------------------------------------------------------- informes de error de WoW
+def crash_report(exe: str, since: float) -> tuple[Path, str] | None:
+    """Informe que WoW deja en <cliente>/Errors al cerrarse por un fallo (posterior a `since`).
+    Devuelve (archivo, resumen) con la línea «Error:» y el módulo en el que falló."""
+    folder = Path(exe).parent / "Errors"
+    try:
+        reports = sorted((p for p in folder.glob("*.txt") if p.stat().st_mtime >= since - 2),
+                         key=lambda p: p.stat().st_mtime)
+    except OSError:
+        return None
+    if not reports:
+        return None
+    rep = reports[-1]
+    error = where = ""
+    try:
+        for line in rep.read_text(errors="replace").splitlines()[:60]:
+            if not error and line.startswith("Error:"):
+                error = line[6:].strip()
+            elif not where and line.startswith("File:"):
+                where = line[5:].strip().replace("\\", "/").rsplit("/", 1)[-1]
+    except OSError:
+        return None
+    summary = error or rep.name
+    if where:
+        summary += f" · {where}"
+    return rep, summary
+
+
+def crash_advice(summary: str) -> str:
+    """Consejo para fallos conocidos de WoW en Wine/Proton."""
+    s = summary.lower()
+    if "voice" in s or "speak" in s or "tts" in s:
+        return _("Fallo del módulo de voz / texto a voz de WoW (Windows lo usa y Wine no lo implementa). "
+                 "Prueba a desactivar el chat de voz y el texto a voz en las opciones del juego.")
+    return ""

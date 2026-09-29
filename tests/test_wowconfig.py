@@ -51,5 +51,26 @@ class TestPrefixBackup(unittest.TestCase):
             self.assertNotIn("WowB.exe", members)
 
 
+
+class TestCrashReport(unittest.TestCase):
+    def test_summary_and_advice(self):
+        import time
+        with tempfile.TemporaryDirectory() as d:
+            exe = Path(d) / "_classic_beta_" / "WowB.exe"
+            (exe.parent / "Errors").mkdir(parents=True)
+            exe.write_bytes(b"MZ")
+            start = time.time()
+            self.assertIsNone(wowconfig.crash_report(str(exe), start))
+            (exe.parent / "Errors" / "2026-09-29_11.00.04_Error_308.txt").write_text(
+                "World of Warcraft: Beta Build (build 70009)\n\n"
+                "Error: ASSERTSAFE(m_platformInterface != nullptr, ...)\n"
+                "File: d:\\BuildServer2\\WoW\\Source\\Voice\\VoiceSpeakManager.cpp\nLine: 188\n")
+            path, summary = wowconfig.crash_report(str(exe), start)
+            self.assertEqual(summary, "ASSERTSAFE(m_platformInterface != nullptr, ...) · VoiceSpeakManager.cpp")
+            self.assertIn("voz", wowconfig.crash_advice(summary))
+            self.assertEqual(wowconfig.crash_advice("Error #132 · Something.cpp"), "")
+            self.assertIsNone(wowconfig.crash_report(str(exe), start + 3600))   # informes viejos: no
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,7 @@ from collections.abc import Callable
 
 from gi.repository import GLib
 
-from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, updates
+from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, updates, wowconfig
 from .config import BATTLENET_ID, Config, Game, Prefix
 from .launcher import GameProcess, State, build, kill_wineserver
 from .i18n import _
@@ -246,6 +246,9 @@ class Controller:
             elif st == State.ERROR:
                 p = self.procs.get(key)
                 hint = p.hints[0] if p and p.hints else _('Revisa el registro.')
+                report = self._crash_report(key, game, p)
+                if report:
+                    hint = report
                 integration.notify(_('{0}: error (código {1})').format(name, code), hint, urgency="critical")
             if st in (State.EXITED, State.ERROR) and on_exit:
                 GLib.idle_add(lambda: (on_exit(code), False)[1])
@@ -288,6 +291,22 @@ class Controller:
                 self.save()
             start()
         return proc
+
+    def _crash_report(self, key: str, game: Game | None, p) -> str:
+        """Si el juego es de Blizzard y dejó un informe en Errors/, lo resume en el aviso y el registro."""
+        if not (game and game.kind == "blizzard" and game.exe and p):
+            return ""
+        found = wowconfig.crash_report(game.exe, p.started)
+        if not found:
+            self.append_log(key, _("# El juego no dejó informe de error en Errors/ (cierre sin volcado)."))
+            return ""
+        path, summary = found
+        advice = wowconfig.crash_advice(summary)
+        self.append_log(key, _("⚠ Informe de error de WoW: {0}").format(summary))
+        self.append_log(key, _("# Informe completo: {0}").format(path))
+        if advice:
+            self.append_log(key, f"⚠ {advice}")
+        return f"{summary}\n{advice}".strip()
 
     def _previous_runner(self, prefix) -> str:
         """Proton con el que se usó el prefijo por última vez (o el que lo creó)."""
