@@ -359,6 +359,7 @@ class MainWindow(Adw.ApplicationWindow):
         gear.connect("clicked", lambda *_a: GameSettings(self.ctl, g).present(self))
         actions.append(gear)
         m = Gio.Menu()
+        m.append(_("Abrir carpeta del juego"), f"win.game-folder::{g.id}")
         m.append(_('Ver registro'), f"win.game-log::{g.id}")
         m.append(_('Crear acceso directo'), f"win.shortcut::{g.id}")
         m.append(_('Cambiar imagen de portada…'), f"win.cover-pick::{g.id}")
@@ -471,6 +472,7 @@ class MainWindow(Adw.ApplicationWindow):
         act("shortcut", self._shortcut, True)
         act("game-remove", self._remove_game, True)
         act("game-move", self._move_game, True)
+        act("game-folder", self._open_game_folder, True)
         act("refresh", lambda _a: self._refresh())
         self.get_application().set_accels_for_action("win.refresh", ["F5"])
         act("cover-pick", self._pick_cover, True)
@@ -580,6 +582,18 @@ class MainWindow(Adw.ApplicationWindow):
         if g:
             f = integration.write_game_desktop(g.id, g.name)
             self.toasts.add_toast(Adw.Toast(title=_('Acceso directo creado: {0}').format(f.name)))
+
+    def _open_game_folder(self, gid: str):
+        """Abre en el gestor de archivos la carpeta del juego (en WoW, la del cliente:
+        Interface/AddOns y WTF están ahí)."""
+        g = self.ctl.cfg.game(gid)
+        if g is None or not g.exe:
+            return
+        folder = installers.game_folder(g.exe)
+        if not folder.is_dir():
+            self.ctl.error(_("La carpeta del juego no existe: {0}").format(folder))
+            return
+        Gtk.FileLauncher(file=Gio.File.new_for_path(str(folder))).launch(self, None, None)
 
     def _move_game(self, gid: str):
         g = self.ctl.cfg.game(gid)

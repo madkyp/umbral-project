@@ -108,6 +108,11 @@ class TestMoveGame(unittest.TestCase):
         new = installers.move_game(str(exe), self.root)
         self.assertEqual(Path(new), self.root / "MiJuego (2)/Binaries/Win64/MiJuego.exe")
 
+    def test_game_folder_to_open(self):
+        self.assertEqual(installers.game_folder("/g/WoW/_classic_beta_/WowB.exe"), Path("/g/WoW/_classic_beta_"))
+        self.assertEqual(installers.game_folder("/g/MiJuego/Binaries/Win64/MiJuego.exe"), Path("/g/MiJuego"))
+        self.assertEqual(installers.game_folder("/g/Juego/bin/juego.exe"), Path("/g/Juego"))
+
     def test_installers_and_prefix_files_are_not_moved(self):
         setup = self.downloads / "setup.exe"
         setup.parent.mkdir(parents=True)

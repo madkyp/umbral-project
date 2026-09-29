@@ -91,6 +91,14 @@ def _unsafe_dirs() -> set[Path]:
     return {d.resolve() for d in dirs if d}
 
 
+def game_folder(exe: str) -> Path:
+    """Carpeta principal del juego: la del .exe, subiendo desde bin/, Binaries/Win64/…"""
+    folder = Path(exe).parent
+    while folder.name.lower() in BIN_DIRS and folder.parent != folder:
+        folder = folder.parent
+    return folder
+
+
 def game_source(exe: str, unsafe: set[Path] | None = None) -> tuple[Path, bool]:
     """(qué mover, es_carpeta). Sube desde bin/, Binaries/Win64/…; si la carpeta resultante
     es una carpeta «de sistema» (Descargas, home…), se mueve solo el archivo."""
