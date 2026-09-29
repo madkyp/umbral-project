@@ -67,7 +67,7 @@ class TestCrashReport(unittest.TestCase):
                 "File: d:\\BuildServer2\\WoW\\Source\\Voice\\VoiceSpeakManager.cpp\nLine: 188\n")
             path, summary = wowconfig.crash_report(str(exe), start)
             self.assertEqual(summary, "ASSERTSAFE(m_platformInterface != nullptr, ...) · VoiceSpeakManager.cpp")
-            self.assertIn("voz", wowconfig.crash_advice(summary))
+            self.assertTrue(wowconfig.crash_advice(summary))   # hay consejo (en el idioma del sistema)
             self.assertEqual(wowconfig.crash_advice("Error #132 · Something.cpp"), "")
             self.assertIsNone(wowconfig.crash_report(str(exe), start + 3600))   # informes viejos: no
 
