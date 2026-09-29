@@ -108,6 +108,8 @@ class MainWindow(Adw.ApplicationWindow):
             self.toasts.add_toast(Adw.Toast(title=a[0]))
         elif ev == "show_log":
             self._show_console(a[0])
+        elif ev == "game_started":
+            self._minimize_for_game()
         elif ev == "installed_candidates":
             self._installed_dialog(*a)
 
@@ -121,6 +123,16 @@ class MainWindow(Adw.ApplicationWindow):
         if self.ctl.scan_external():
             self.rebuild_library()
         return True
+
+    def _minimize_for_game(self):
+        """Al lanzar un juego: a la bandeja si la hay (Hyprland no tiene «minimizar»);
+        si no, se pide al escritorio que minimice la ventana."""
+        if not self.ctl.cfg.settings.minimize_on_launch or not self.is_visible():
+            return
+        if self.get_application().in_tray():
+            self.set_visible(False)
+        else:
+            self.minimize()
 
     def _on_close(self, *_a):
         app = self.get_application()

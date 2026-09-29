@@ -257,8 +257,10 @@ class Controller:
         def start():
             proc.start()
             if proc.state == State.RUNNING and notify_user:
-                integration.notify(_('Iniciando {0}').format(name), _('GPU: {0}').format(plan.gpu.name if plan.gpu else 'predeterminada'))
+                integration.notify(_('Iniciando {0}').format(name),
+                                   _('GPU: {0}').format(plan.gpu.name if plan.gpu else _("predeterminada")))
                 threading.Thread(target=self._watch_gpu, args=(key,), daemon=True).start()
+                self.emit("game_started", key)
 
         previous = self._previous_runner(prefix)
         if plan.runner.kind == "proton" and previous and previous != plan.runner.name and not fresh:

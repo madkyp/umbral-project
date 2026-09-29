@@ -79,6 +79,16 @@ class SystemPage(Adw.PreferencesPage):
             self.ctl.save()
         tr.connect("notify::active", on_tray)
         ap.add(tr)
+        mn = Adw.SwitchRow(title=_("Minimizar al lanzar un juego"),
+                           subtitle=_("Umbral se oculta en la bandeja al empezar la partida (en Hyprland no existe "
+                                      "«minimizar»); vuelve con un clic en su icono."),
+                           active=self.ctl.cfg.settings.minimize_on_launch)
+
+        def on_min(row, *_a):
+            self.ctl.cfg.settings.minimize_on_launch = row.get_active()
+            self.ctl.save()
+        mn.connect("notify::active", on_min)
+        ap.add(mn)
 
         from .. import i18n
         codes = list(i18n.LANGUAGES)

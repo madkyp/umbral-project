@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.8.3](https://img.shields.io/badge/version-0.8.3-informational)
+![Version 0.8.4](https://img.shields.io/badge/version-0.8.4-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -65,7 +65,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 - **MangoHud** overlay (FPS only / basic / full, any corner), GameMode, gamescope, esync/fsync/ntsync, WineD3D, Wayland driver, per-prefix shader cache, launch arguments and environment variables.
 
 ### 🪟 Desktop integration
-- **Tray icon** (StatusNotifierItem — Waybar, KDE…): closing the window keeps Umbral in the background; the menu opens Battle.net or any game.
+- **Tray icon** (StatusNotifierItem — Waybar, KDE…): closing the window keeps Umbral in the background; the menu opens Battle.net or any game. When a game starts, Umbral **hides itself in the tray** (optional; Hyprland has no "minimise").
 - Optional **floating window** on Hyprland (runtime rule, your config is never touched) and a validated **Hyprland snippet** (`Hyprland --verify-config`) with window rules and a keybind.
 - `.desktop` shortcuts per game, desktop notifications, a collapsible **log console** and per-launch log files.
 - **English and Spanish** (follows the system language, switchable in *System → Appearance*).
