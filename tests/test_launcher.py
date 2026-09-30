@@ -187,14 +187,18 @@ class TestDeckHook(unittest.TestCase):
     def test_no_control_deck(self):
         plan, run = self._build(None)
         self.assertNotIn("WINEDLLOVERRIDES", plan.env)
-        self.assertFalse(plan.overlay)
+        self.assertFalse(plan.deck_session)
         run.assert_not_called()
 
     def test_reshade_env_and_temps(self):
-        plan, run = self._build('{"env":{"WINEDLLOVERRIDES":"d3dcompiler_47=n;dxgi=n,b"},"overlay":true}')
+        plan, run = self._build('{"env":{"WINEDLLOVERRIDES":"d3dcompiler_47=n;dxgi=n,b"},"overlay":true,"session":true}')
         self.assertEqual(run.call_args[0][0], ["/usr/bin/control-deck", "hook", "umbral:story"])
         self.assertEqual(plan.env["WINEDLLOVERRIDES"], "d3dcompiler_47=n;dxgi=n,b")
-        self.assertTrue(plan.overlay)
+        self.assertTrue(plan.deck_session)
+
+    def test_session_without_temps(self):
+        plan, _run = self._build('{"env":{},"overlay":false,"session":true}')
+        self.assertTrue(plan.deck_session)
 
     def test_user_env_wins(self):
         plan, _run = self._build('{"env":{"ENABLE_VKBASALT":"1"},"overlay":false}', {"ENABLE_VKBASALT": "0"})
@@ -202,5 +206,5 @@ class TestDeckHook(unittest.TestCase):
 
     def test_broken_hook_is_ignored(self):
         plan, _run = self._build("not json")
-        self.assertFalse(plan.overlay)
+        self.assertFalse(plan.deck_session)
         self.assertNotIn("WINEDLLOVERRIDES", plan.env)

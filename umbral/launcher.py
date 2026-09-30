@@ -139,7 +139,7 @@ class LaunchPlan:
     runner: Runner
     gpu: gpumod.Gpu | None
     warnings: list[str] = field(default_factory=list)
-    overlay: bool = False        # línea TEMPS de Control Deck, junto al juego
+    deck_session: bool = False   # Control Deck acompaña al juego (TEMPS, planificador de CPU…)
 
     def full_env(self) -> dict[str, str]:
         return {**os.environ, **self.env}
@@ -152,7 +152,7 @@ class LaunchPlan:
 def deck_hook(game_id: str) -> dict:
     """Lo que Control Deck (si está instalado) añade a este juego: variables de sus shaders y TEMPS.
 
-    `control-deck hook umbral:<id>` → {"env": {...}, "overlay": bool}. Ante cualquier fallo, {}.
+    `control-deck hook umbral:<id>` → {"env": {...}, "overlay": bool, "session": bool}. Ante cualquier fallo, {}.
     """
     deck = shutil.which("control-deck")
     if not deck:
@@ -165,12 +165,12 @@ def deck_hook(game_id: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def start_deck_overlay(pid: int) -> None:
-    """Línea de temperaturas (TEMPS) de Control Deck; se cierra sola al terminar el proceso."""
+def start_deck_session(pid: int, game_id: str) -> None:
+    """Control Deck acompaña al proceso: TEMPS, planificador de CPU mientras se juega; termina con él."""
     deck = shutil.which("control-deck")
     if deck:
         try:
-            subprocess.Popen([deck, "overlay", str(pid)], stdin=subprocess.DEVNULL,
+            subprocess.Popen([deck, "session", str(pid), f"umbral:{game_id}"], stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         except OSError:
             pass
@@ -269,7 +269,8 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
     env.update(opts.env)  # las variables del usuario siempre ganan
     argv = wrappers + cmd + (args or []) + shlex.split(opts.args or "")
     cwd = str(Path(exe).parent) if Path(exe).is_absolute() and Path(exe).parent.exists() else prefix.path
-    return LaunchPlan(argv, env, cwd, runner, target, warnings, overlay=bool(hook.get("overlay")))
+    return LaunchPlan(argv, env, cwd, runner, target, warnings,
+                      deck_session=bool(hook.get("session") or hook.get("overlay")))
 
 
 def _windows_command(exe: str) -> list[str]:

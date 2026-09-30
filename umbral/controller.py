@@ -18,7 +18,7 @@ from gi.repository import GLib
 
 from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, sgdb, updates, wowconfig
 from .config import BATTLENET_ID, Config, Game, Prefix
-from .launcher import GameProcess, State, build, kill_wineserver, start_deck_overlay
+from .launcher import GameProcess, State, build, kill_wineserver, start_deck_session
 from .i18n import _
 
 log = logging.getLogger(__name__)
@@ -268,8 +268,8 @@ class Controller:
 
         def start():
             proc.start()
-            if proc.state == State.RUNNING and plan.overlay and proc.proc is not None:
-                start_deck_overlay(proc.proc.pid)
+            if proc.state == State.RUNNING and plan.deck_session and proc.proc is not None and game is not None:
+                start_deck_session(proc.proc.pid, game.id)
             if proc.state == State.RUNNING and notify_user:
                 integration.notify(_('Iniciando {0}').format(name),
                                    _('GPU: {0}').format(plan.gpu.name if plan.gpu else _("predeterminada")))
