@@ -157,3 +157,50 @@ class TestPrefixes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDeckHook(unittest.TestCase):
+    """Hook de Control Deck: variables de los shaders y TEMPS para los juegos que lanza Umbral."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.t = Path(self.tmp.name)
+        self.r = fake_runner(self.t)
+        self.cfg = Config()
+        self.pfx = Prefix("p", "P", str(self.t / "pfx"), self.r.name)
+        from umbral.config import Game
+        self.game = Game("story", "Story", "custom", "p", str(self.t / "Story.exe"))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _build(self, deck_out: str | None, user_env: dict | None = None):
+        tools = {"umu-run", "control-deck"} if deck_out is not None else {"umu-run"}
+        run = mock.Mock(return_value=mock.Mock(returncode=0, stdout=deck_out or ""))
+        if user_env:
+            self.game.options.env = user_env
+        with mock.patch("shutil.which", side_effect=lambda c: f"/usr/bin/{c}" if c in tools else None), \
+             mock.patch("umbral.launcher.subprocess.run", run):
+            plan = launcher.build(self.cfg, self.pfx, self.game.exe, game=self.game, runners=[self.r])
+        return plan, run
+
+    def test_no_control_deck(self):
+        plan, run = self._build(None)
+        self.assertNotIn("WINEDLLOVERRIDES", plan.env)
+        self.assertFalse(plan.overlay)
+        run.assert_not_called()
+
+    def test_reshade_env_and_temps(self):
+        plan, run = self._build('{"env":{"WINEDLLOVERRIDES":"d3dcompiler_47=n;dxgi=n,b"},"overlay":true}')
+        self.assertEqual(run.call_args[0][0], ["/usr/bin/control-deck", "hook", "umbral:story"])
+        self.assertEqual(plan.env["WINEDLLOVERRIDES"], "d3dcompiler_47=n;dxgi=n,b")
+        self.assertTrue(plan.overlay)
+
+    def test_user_env_wins(self):
+        plan, _run = self._build('{"env":{"ENABLE_VKBASALT":"1"},"overlay":false}', {"ENABLE_VKBASALT": "0"})
+        self.assertEqual(plan.env["ENABLE_VKBASALT"], "0")
+
+    def test_broken_hook_is_ignored(self):
+        plan, _run = self._build("not json")
+        self.assertFalse(plan.overlay)
+        self.assertNotIn("WINEDLLOVERRIDES", plan.env)

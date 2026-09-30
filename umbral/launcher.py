@@ -1,6 +1,7 @@
 """Construcción del comando/entorno y control de procesos lanzados."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -138,6 +139,7 @@ class LaunchPlan:
     runner: Runner
     gpu: gpumod.Gpu | None
     warnings: list[str] = field(default_factory=list)
+    overlay: bool = False        # línea TEMPS de Control Deck, junto al juego
 
     def full_env(self) -> dict[str, str]:
         return {**os.environ, **self.env}
@@ -145,6 +147,33 @@ class LaunchPlan:
     def describe(self) -> str:
         env = " ".join(f"{k}={shlex.quote(v)}" for k, v in sorted(self.env.items()))
         return f"{env} {shlex.join(self.argv)}"
+
+
+def deck_hook(game_id: str) -> dict:
+    """Lo que Control Deck (si está instalado) añade a este juego: variables de sus shaders y TEMPS.
+
+    `control-deck hook umbral:<id>` → {"env": {...}, "overlay": bool}. Ante cualquier fallo, {}.
+    """
+    deck = shutil.which("control-deck")
+    if not deck:
+        return {}
+    try:
+        out = subprocess.run([deck, "hook", f"umbral:{game_id}"], capture_output=True, text=True, timeout=5)
+        data = json.loads(out.stdout) if out.returncode == 0 else {}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def start_deck_overlay(pid: int) -> None:
+    """Línea de temperaturas (TEMPS) de Control Deck; se cierra sola al terminar el proceso."""
+    deck = shutil.which("control-deck")
+    if deck:
+        try:
+            subprocess.Popen([deck, "overlay", str(pid)], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            pass
 
 
 def effective_options(cfg: Config, prefix: Prefix, game: Game | None) -> LaunchOptions:
@@ -230,10 +259,17 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
             env["DXVK_FRAME_RATE"] = env["VKD3D_FRAME_RATE"] = str(fps)
             warnings.append(_("Sin MangoHud el límite de FPS depende de tu Proton (DXVK_FRAME_RATE)."))
 
+    # Control Deck: ReShade / vkBasalt y la línea de temperaturas (TEMPS)
+    hook = deck_hook(game.id) if game is not None else {}
+    for k, v in (hook.get("env") or {}).items():
+        if k == "WINEDLLOVERRIDES" and env.get(k):
+            env[k] = f"{env[k]};{v}"
+        else:
+            env.setdefault(k, str(v))
     env.update(opts.env)  # las variables del usuario siempre ganan
     argv = wrappers + cmd + (args or []) + shlex.split(opts.args or "")
     cwd = str(Path(exe).parent) if Path(exe).is_absolute() and Path(exe).parent.exists() else prefix.path
-    return LaunchPlan(argv, env, cwd, runner, target, warnings)
+    return LaunchPlan(argv, env, cwd, runner, target, warnings, overlay=bool(hook.get("overlay")))
 
 
 def _windows_command(exe: str) -> list[str]:

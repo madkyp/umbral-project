@@ -73,6 +73,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 - **Tray icon** (StatusNotifierItem — Waybar, KDE…): closing the window keeps Umbral in the background; the menu opens Battle.net or any game. When a game starts, Umbral **hides itself in the tray** (optional; Hyprland has no "minimise").
 - Optional **floating window** on Hyprland (runtime rule, your config is never touched) and a validated **Hyprland snippet** (`Hyprland --verify-config`) with window rules and a keybind.
 - `.desktop` shortcuts per game, desktop notifications, a collapsible **log console** and per-launch log files.
+- **[Control Deck](https://github.com/madkyp/control-deck) integration** (optional): when it is installed, Umbral asks it before each launch (`control-deck hook umbral:<id>`) and adds what you set there for that game: **visual shaders** (ReShade or vkBasalt) and the **TEMPS** in-game temperature line. Umbral's own options and your environment variables still win.
 - **English and Spanish** (follows the system language, switchable in *System → Appearance*).
 
 ---
