@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.11.0](https://img.shields.io/badge/version-0.11.0-informational)
+![Version 0.12.0](https://img.shields.io/badge/version-0.12.0-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -167,6 +167,9 @@ Your prefixes (`~/Games/umbral/`) and settings (`~/.config/umbral/`) are left un
 | `umbral --check` | Terminal diagnostics: GPU, packages, runners, prefix, detected games |
 | `umbral --running` | Running games as JSON (see [Integration](#-integration)) |
 | `umbral --stop <id>` | Closes a running game without opening the window (game first, `wineserver -k` only if it doesn't respond) |
+| `umbral --list` | The library's games as JSON (id, name, kind, prefix, exe) |
+| `umbral --get <id>` | A game's options as JSON: what is set and the effective values used at launch |
+| `umbral --set <id> key=value…` | Changes a game's options (see [Integration](#-integration)) |
 | `umbral --debug` | Detailed logs, including GPU info and every environment variable applied (`PROTON_LOG`, `UMU_LOG`) |
 
 - **F5** refreshes the library, **Ctrl+L** opens or closes the log console (**Esc** closes it).
@@ -194,6 +197,8 @@ Other apps (e.g. [Control Deck](https://github.com/madkyp/control-deck)) can fol
 
   `game_pids` are the game's own processes, taken from the process tree Umbral launched — not matched by name, so two different `Game.exe` (RPG Maker) can't be confused. An entry is valid only while its PID exists **and** its `starttime` (field 22 of `/proc/<pid>/stat`) still matches, which rules out reused PIDs. `launched_by` is `battlenet` for games started from the Battle.net client. Games still running when Umbral restarts are kept.
 - **`umbral --stop <id>`** — closes a game; the running Umbral does it without showing its window (exit code 0 = closing, 1 = not running). Works even if Umbral is closed, using `running.json`.
+- **`umbral --set <id> key=value …`** — changes a game's options from outside (all or nothing: one invalid value and nothing changes; exit code 2). The running Umbral applies and saves it; without Umbral, the config is edited directly. Keys:
+  `gamemode`, `mangohud`, `wayland`, `writecopy`, `wined3d`, `shader_cache`, `gamescope`, `esync`, `fsync`, `ntsync` (`on` / `off` / `default`) · `mangohud_preset` (`fps` / `basic` / `full`) · `mangohud_position` · `fps_limit` (0–1000) · `gamescope_resolution` (`640x480`… or `screen`) · `gamescope_mode` · `gamescope_scaler` · `gamescope_filter` · `gamescope_args` · `args` · `gpu` (`auto` or `vvvv:dddd`) · `runner` · `env.NAME=value` (`env.NAME=` removes it). `default` goes back to inheriting from the prefix; for Battle.net they are the prefix's options. `umbral --get <id>` returns the same keys (`options` = set, `effective` = used at launch).
 - **`control-deck hook umbral:<id>`** — if Control Deck is installed, Umbral asks it for extra launch variables (ReShade / vkBasalt) and lets it follow the session (TEMPS, CPU scheduler) while the game runs.
 
 ---
