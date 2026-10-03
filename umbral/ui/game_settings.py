@@ -352,6 +352,7 @@ class GameSettings(Adw.PreferencesDialog):
         name = self.name_row.get_text().strip()
         if name:
             g.name = name
+            library.sync_prefix_name(self.ctl.cfg, g)
         if g.kind == "custom":
             # Solo si lo has editado tú: el juego puede haberse movido mientras el diálogo
             # estaba abierto y no hay que pisar la ruta nueva con la antigua.

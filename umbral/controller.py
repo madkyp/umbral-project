@@ -97,6 +97,8 @@ class Controller:
                     log.info("Ruta de %s corregida: %s -> %s", g.name, g.exe, found)
                     g.exe = found
                     changes.append(f"~ {g.name}")
+            if g.kind == "custom" and library.sync_prefix_name(self.cfg, g):
+                changes.append(f"~ prefix {g.name}")
         if changes:
             self.save()
             for c in changes:

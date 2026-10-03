@@ -21,6 +21,18 @@ def ensure_battlenet_prefix(cfg: Config, path: Path, runner: str, imported: bool
     return p
 
 
+def sync_prefix_name(cfg: Config, g: Game) -> bool:
+    """El prefijo propio de un juego se llama como él (al añadirlo pudo tomar el nombre del
+    .exe, p. ej. «Game»). Solo si ningún otro juego lo usa y no es el de Battle.net."""
+    p = cfg.prefix(g.prefix_id)
+    if p is None or p.id == BATTLENET_ID or p.name == g.name:
+        return False
+    if any(x.prefix_id == p.id for x in cfg.games if x is not g):
+        return False
+    p.name = g.name
+    return True
+
+
 def sync_detected(cfg: Config) -> list[str]:
     """Añade/actualiza/quita entradas auto de juegos Blizzard. Devuelve cambios."""
     changes: list[str] = []
