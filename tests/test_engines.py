@@ -1,3 +1,4 @@
+import re
 import struct
 import tempfile
 import unittest
@@ -208,7 +209,7 @@ class TestCommands(unittest.TestCase):
     def test_missing_emulator_says_how_to_install(self):
         g = Game("a", "x", "emulator", "", str(self.rom), system="ps2")
         with mock.patch.object(engines, "find_emulator", return_value=None):
-            with self.assertRaisesRegex(FileNotFoundError, "PCSX2 .*Sistema → Emuladores"):
+            with self.assertRaisesRegex(FileNotFoundError, re.escape(engines.install_hint("pcsx2"))):  # en cualquier idioma
                 engines.command(g, False)
         g = Game("a", "x", "emulator", "", str(self.rom), system="a2600")
         with mock.patch.object(engines, "find_emulator", return_value=None):
