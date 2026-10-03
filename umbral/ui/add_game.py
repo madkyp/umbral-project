@@ -20,11 +20,17 @@ class AddGameDialog(Adw.Dialog):
         self.exe: str = ""
 
         tv = Adw.ToolbarView()
-        hb = Adw.HeaderBar()
-        self.add_btn = Gtk.Button(label=_('Añadir'), css_classes=["suggested-action"], sensitive=False)
+        tv.add_top_bar(Adw.HeaderBar())
+        # Botones abajo: Cancelar a la izquierda, Añadir a la derecha
+        bar = Gtk.Box(spacing=12, margin_start=24, margin_end=24, margin_top=12, margin_bottom=18)
+        cancel = Gtk.Button(label=_('Cancelar'), css_classes=["pill"])
+        cancel.connect("clicked", lambda *_a: self.close())
+        bar.append(cancel)
+        bar.append(Gtk.Box(hexpand=True))
+        self.add_btn = Gtk.Button(label=_('Añadir'), css_classes=["suggested-action", "pill"], sensitive=False)
         self.add_btn.connect("clicked", self._add)
-        hb.pack_end(self.add_btn)
-        tv.add_top_bar(hb)
+        bar.append(self.add_btn)
+        tv.add_bottom_bar(bar)
 
         page = Adw.PreferencesPage()
         g = Adw.PreferencesGroup(description=_('Ejecutables .exe, instaladores .msi o scripts .bat de Windows.'))
