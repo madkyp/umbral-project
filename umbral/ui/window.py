@@ -362,10 +362,8 @@ class MainWindow(Adw.ApplicationWindow):
         play.set_child(Adw.ButtonContent(icon_name="media-playback-stop-symbolic" if running
                                          else "media-playback-start-symbolic",
                                          label=_("Detener") if running else _("Jugar")))
-        external = g.id in self.ctl.external
-        if external:
-            play.set_sensitive(False)
-            play.set_tooltip_text(_('Abierto a través de Battle.net: ciérralo desde el juego'))
+        if g.id in self.ctl.external:
+            play.set_tooltip_text(_("Abierto a través de Battle.net: «Detener» cierra solo el juego"))
         play.connect("clicked", lambda *_a: self.ctl.stop(g.id) if running else self.ctl.launch_game(g.id))
         actions.append(play)
         gear = Gtk.Button(icon_name="emblem-system-symbolic", css_classes=["flat", "circular"],

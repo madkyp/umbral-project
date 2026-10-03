@@ -16,7 +16,7 @@ from collections.abc import Callable
 
 from gi.repository import GLib
 
-from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, sgdb, updates, wowconfig
+from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, running, sgdb, updates, wowconfig
 from .config import BATTLENET_ID, Config, Game, Prefix
 from .launcher import GameProcess, State, build, kill_wineserver, start_deck_session
 from .i18n import _
@@ -33,6 +33,12 @@ class Controller:
         self.runners: list[runners.Runner] = runners.discover()
         self.procs: dict[str, GameProcess] = {}
         self.external: set[str] = set()  # juegos en marcha lanzados por Battle.net
+        self._ext_pids: dict[str, list[int]] = {}       # sus PIDs exactos (el .exe)
+        self._ext_started: dict[str, float] = {}
+        # Juegos que seguían abiertos de una sesión anterior de Umbral (siguen en running.json)
+        self._adopted: dict[str, dict] = {g["id"]: g for g in running.read() if g.get("id")}
+        self._running_cache = ""
+        GLib.timeout_add_seconds(5, self._refresh_running)
         self._icons: dict[str, tuple[Path | None, str]] = {}   # exe -> (png, color)
         self._icon_jobs: set[str] = set()
         self.checking: set[str] = set()   # juegos comprobando versión
@@ -179,14 +185,15 @@ class Controller:
         p = self.procs.get(key)
         # «Iniciando» incluye la espera por la copia de seguridad previa a un cambio de Proton
         starting = bool(p and p.proc is None and p.state == State.STARTING)
-        return bool(p and p.running()) or starting or key in self.external or key in self.moving
+        return bool(p and p.running()) or starting or key in self.external or key in self.moving \
+            or key in self._adopted
 
     def state(self, key: str) -> str:
         if key in self.checking:
             return _('Comprobando versión')
         if key in self.moving:
             return _("Moviendo…")
-        if key in self.external:
+        if key in self.external or key in self._adopted:
             return State.RUNNING
         p = self.procs.get(key)
         return p.state if p else ""
@@ -197,18 +204,21 @@ class Controller:
         wanted = {Path(g.exe).name.lower(): g.id for g in self.cfg.games
                   if g.kind == "blizzard" and g.exe}
         found: set[str] = set()
+        pids: dict[str, list[int]] = {}
         if wanted:
             for d in Path("/proc").iterdir():
                 if not d.name.isdigit():
                     continue
-                try:
-                    argv0 = (d / "cmdline").read_bytes().split(b"\0", 1)[0].decode(errors="replace")
-                except OSError:
-                    continue
-                name = argv0.replace("\\", "/").rsplit("/", 1)[-1].lower()
+                name = running.argv0_name(int(d.name)).lower()
                 if name in wanted:
                     found.add(wanted[name])
+                    pids.setdefault(wanted[name], []).append(int(d.name))
         found -= {k for k, p in self.procs.items() if p.running()}
+        self._ext_pids = {k: v for k, v in pids.items() if k in found}
+        for gid in found - self.external:
+            self._ext_started[gid] = time.time()
+        for gid in self.external - found:
+            self._ext_started.pop(gid, None)
         changed = found != self.external
         for gid in found - self.external:
             self._session_start(gid)
@@ -398,10 +408,69 @@ class Controller:
             GLib.idle_add(done)
         threading.Thread(target=work, daemon=True).start()
 
-    def stop(self, key: str) -> None:
+    def stop(self, key: str) -> bool:
+        """Cierra un juego en marcha (botón Detener, `umbral --stop`). False si no estaba abierto."""
         p = self.procs.get(key)
-        if p:
-            threading.Thread(target=p.stop, daemon=True).start()
+        g = self.cfg.game(key)
+        if p and p.running():
+            threading.Thread(target=p.stop, kwargs={"exe": g.exe if g else ""}, daemon=True).start()
+            return True
+        entry = next((e for e in self._running_entries() if e["id"] == key), None)
+        if entry is None:
+            return False
+
+        def work():
+            running.stop_game(entry)
+            self._adopted.pop(key, None)
+            GLib.idle_add(lambda: (self._refresh_running(), self.emit("library"), False)[-1])
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    # ------------------------------------------------------------ juegos en marcha (running.json)
+    def _running_entries(self) -> list[dict]:
+        out: list[dict] = []
+        for key, p in self.procs.items():
+            if not (p.running() and p.proc):
+                continue
+            g = self.cfg.game(key)
+            pref = self.cfg.prefix(g.prefix_id) if g else None
+            tree = p.pids()
+            exe = g.exe if g and g.exe else ""
+            out.append(running.entry(
+                key, g.name if g else key, g.kind if g else "", "umbral", p.proc.pid,
+                running.exe_pids(tree, Path(exe).name) if exe else [], exe, p.plan.runner.name,
+                str(p.plan.runner.path) if p.plan.runner.kind == "proton" else "",
+                pref.path if pref else p.prefix_path, p.started))
+        for key in self.external:
+            g = self.cfg.game(key)
+            pref = self.cfg.prefix(g.prefix_id) if g else None
+            r = runners.resolve(pref.runner, self.runners) if pref else None
+            pids = self._ext_pids.get(key, [])
+            if g and pids:
+                out.append(running.entry(key, g.name, g.kind, "battlenet", pids[0], pids, g.exe,
+                                         r.name if r else "", str(r.path) if r and r.kind == "proton" else "",
+                                         pref.path if pref else "", self._ext_started.get(key, time.time())))
+        have = {e["id"] for e in out}
+        for key, e in list(self._adopted.items()):
+            if key in have:
+                continue
+            if running.read_alive(e):
+                out.append(e)
+            else:
+                del self._adopted[key]
+        return out
+
+    def _refresh_running(self) -> bool:
+        """Mantiene running.json al día (solo se reescribe si algo cambió)."""
+        try:
+            entries = self._running_entries()
+            key = repr([(e["id"], e["pid"], [x["pid"] for x in e["game_pids"]]) for e in entries])
+            if key != self._running_cache:
+                running.write(entries)
+                self._running_cache = key
+        except OSError as e:
+            log.warning("No se pudo escribir running.json: %s", e)
+        return True
 
     def kill_prefix(self, prefix_id: str) -> None:
         prefix = self.cfg.prefix(prefix_id)

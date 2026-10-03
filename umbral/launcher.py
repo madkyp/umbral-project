@@ -356,31 +356,27 @@ class GameProcess:
         # pressure-vessel (umu) crea sesiones nuevas: se recorre el árbol por ppid.
         if not self.proc:
             return []
-        children: dict[int, list[int]] = {}
-        for d in Path("/proc").iterdir():
-            if not d.name.isdigit():
-                continue
-            try:
-                stat = (d / "stat").read_text()
-            except OSError:
-                continue
-            ppid = int(stat.rsplit(")", 1)[1].split()[1])
-            children.setdefault(ppid, []).append(int(d.name))
-        out, todo = [], [self.proc.pid]
-        while todo:
-            pid = todo.pop()
-            out.append(pid)
-            todo += children.get(pid, [])
-        return out
+        from . import running
+        return running.process_tree(self.proc.pid)
 
     def running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
-    def stop(self, timeout: float = 8.0) -> None:
-        """Cierre limpio: wineserver -k, luego SIGTERM y SIGKILL al grupo."""
+    def stop(self, timeout: float = 8.0, exe: str = "") -> None:
+        """Cierre ordenado: primero el .exe del juego; si no responde, wineserver -k del
+        prefijo; por último SIGTERM/SIGKILL al grupo del lanzador."""
         if not self.running():
             return
         self._set(State.STOPPING)
+        from . import running
+        tree = self.pids()
+        game_pids = running.exe_pids(tree, Path(exe).name) if exe else []
+        running.stop_game({"pid": self.proc.pid, "pid_starttime": running.starttime(self.proc.pid),
+                           "game_pids": [{"pid": p, "starttime": running.starttime(p)} for p in game_pids],
+                           "proton_path": str(self.plan.runner.path) if self.plan.runner.kind == "proton" else "",
+                           "prefix": self.prefix_path, "launched_by": "umbral"}, timeout)
+        if not self.running():
+            return
         kill_wineserver(self.plan.runner, self.prefix_path)
         deadline = time.monotonic() + timeout
         for sig in (signal.SIGTERM, signal.SIGKILL):

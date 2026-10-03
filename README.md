@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.10.2](https://img.shields.io/badge/version-0.10.2-informational)
+![Version 0.11.0](https://img.shields.io/badge/version-0.11.0-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -165,12 +165,36 @@ Your prefixes (`~/Games/umbral/`) and settings (`~/.config/umbral/`) are left un
 | `umbral --launch battlenet` | Opens Battle.net |
 | `umbral --launch battlenet:wow_classic_beta` | Plays WoW Forever (beta) — with the update check |
 | `umbral --check` | Terminal diagnostics: GPU, packages, runners, prefix, detected games |
+| `umbral --running` | Running games as JSON (see [Integration](#-integration)) |
+| `umbral --stop <id>` | Closes a running game without opening the window (game first, `wineserver -k` only if it doesn't respond) |
 | `umbral --debug` | Detailed logs, including GPU info and every environment variable applied (`PROTON_LOG`, `UMU_LOG`) |
 
 - **F5** refreshes the library, **Ctrl+L** opens or closes the log console (**Esc** closes it).
 
 ### Hyprland (optional)
 *System → Hyprland → Suggested snippet* generates Lua rules (Hyprland Lua config) for Umbral, Battle.net and WoW plus a `SUPER + G` keybind. It is validated with `Hyprland --verify-config` but **never written to your config** — copy it yourself. A copy lives in [`hyprland-snippet.lua`](hyprland-snippet.lua).
+
+---
+
+## 🔌 Integration
+
+Other apps (e.g. [Control Deck](https://github.com/madkyp/control-deck)) can follow and control Umbral's games:
+
+- **`$XDG_RUNTIME_DIR/umbral/running.json`** — the games running right now, rewritten whenever that changes:
+
+  ```json
+  {"version": 1, "umbral_pid": 1234, "updated": 1790000000.0,
+   "games": [{"id": "1484d426be", "name": "Pokemon Iberia", "kind": "custom",
+              "launched_by": "umbral", "pid": 677724, "pid_starttime": 123456,
+              "game_pids": [{"pid": 678020, "starttime": 123500}],
+              "exe": "/…/Game.exe", "exe_name": "Game.exe",
+              "proton": "GE-Proton11-7-x86_64", "proton_path": "/…",
+              "prefix": "/…/Games/umbral/game-2", "started": 1790000000.0}]}
+  ```
+
+  `game_pids` are the game's own processes, taken from the process tree Umbral launched — not matched by name, so two different `Game.exe` (RPG Maker) can't be confused. An entry is valid only while its PID exists **and** its `starttime` (field 22 of `/proc/<pid>/stat`) still matches, which rules out reused PIDs. `launched_by` is `battlenet` for games started from the Battle.net client. Games still running when Umbral restarts are kept.
+- **`umbral --stop <id>`** — closes a game; the running Umbral does it without showing its window (exit code 0 = closing, 1 = not running). Works even if Umbral is closed, using `running.json`.
+- **`control-deck hook umbral:<id>`** — if Control Deck is installed, Umbral asks it for extra launch variables (ReShade / vkBasalt) and lets it follow the session (TEMPS, CPU scheduler) while the game runs.
 
 ---
 

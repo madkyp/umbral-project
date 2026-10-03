@@ -35,6 +35,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--debug", action="store_true", help=_('registro detallado (GPU, entorno, PROTON_LOG)'))
     ap.add_argument("--launch", metavar="ID", help=_('lanzar un juego de la biblioteca (p. ej. battlenet)'))
     ap.add_argument("--check", action="store_true", help=_('diagnóstico en terminal, sin interfaz'))
+    ap.add_argument("--stop", metavar="ID", help=_("cerrar un juego en marcha (sin abrir la ventana)"))
+    ap.add_argument("--running", action="store_true",
+                    help=_("mostrar en JSON los juegos en marcha (el contenido de running.json)"))
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {VERSION}")
     return ap.parse_args(argv)
 
@@ -89,6 +92,13 @@ class UmbralApp(Adw.Application):
         args = parse_args(cmdline.get_arguments()[1:])
         if self.ctl is None:
             self._startup(args.debug)
+        if args.stop:
+            # Viene de otra instancia (p. ej. el botón DETENER de Control Deck): sin ventana
+            if self.ctl.stop(args.stop):
+                cmdline.print_literal(_("Cerrando {0}…").format(args.stop) + "\n")
+                return 0
+            cmdline.printerr_literal(_("«{0}» no está en marcha.").format(args.stop) + "\n")
+            return 1
         self.activate()
         if args.launch:
             GLib.idle_add(lambda: (self.ctl.launch_game(args.launch), False)[1])
@@ -186,4 +196,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.check:
         setup_logging(args.debug)
         return check()
+    if args.running:
+        import json
+
+        from . import running
+        print(json.dumps(running.read(), indent=1, ensure_ascii=False))
+        return 0
+    if args.stop:
+        return stop_from_cli(args.stop, argv)
     return UmbralApp().run(argv)
+
+
+def stop_from_cli(game_id: str, argv: list[str]) -> int:
+    """`umbral --stop <id>`: si Umbral está abierto se lo pide a él (sin mostrar la ventana);
+    si no, cierra el juego con los datos de running.json."""
+    app = UmbralApp()
+    try:
+        app.register(None)
+    except GLib.Error:
+        pass
+    if app.get_is_remote():
+        return app.run(argv)
+    from . import running
+    entry = next((g for g in running.read() if g.get("id") == game_id), None)
+    if entry is None:
+        print(_("«{0}» no está en marcha.").format(game_id), file=sys.stderr)
+        return 1
+    print(_("Cerrando {0}…").format(game_id))
+    return 0 if running.stop_game(entry) else 1
