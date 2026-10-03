@@ -35,7 +35,8 @@ class TestSyncPrefixName(unittest.TestCase):
 class TestPrunePrefixes(unittest.TestCase):
     def test_only_missing_and_unused_prefixes_go(self):
         with tempfile.TemporaryDirectory() as d:
-            here = Path(d, "here"); here.mkdir()
+            here = Path(d, "here")
+            here.mkdir()
             c = Config()
             c.prefixes = [Prefix(BATTLENET_ID, "Battle.net", "/nope/bn", "GE"),
                           Prefix("p-gone", "Gone", "/nope/gone", "GE"),
