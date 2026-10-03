@@ -16,9 +16,9 @@ from collections.abc import Callable
 
 from gi.repository import GLib
 
-from . import battlenet, exeicon, gpu, installers, integration, library, paths, prefixes, runners, running, sgdb, updates, wowconfig
+from . import battlenet, engines, exeicon, gpu, installers, integration, library, paths, prefixes, runners, running, sgdb, updates, wowconfig
 from .config import BATTLENET_ID, Config, Game, Prefix
-from .launcher import GameProcess, State, build, kill_wineserver, start_deck_session
+from .launcher import GameProcess, State, build, build_native, kill_wineserver, start_deck_session
 from .i18n import _
 
 log = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class Controller:
         self._icon_jobs: set[str] = set()
         self.checking: set[str] = set()   # juegos comprobando versión
         self.moving: set[str] = set()     # juegos cuyos archivos se están moviendo
+        self.installing: set[str] = set() # emuladores instalándose
         self._sessions: dict[str, float] = {}   # juego -> instante desde el que falta sumar tiempo
         GLib.timeout_add_seconds(60, self._tick_playtime)
         self.logs: dict[str, list[str]] = {}
@@ -230,21 +231,25 @@ class Controller:
     def run(self, key: str, prefix_id: str, exe: str, args: list[str] | None = None,
             game: Game | None = None, on_exit: Callable[[int | None], None] | None = None,
             notify_user: bool = True) -> GameProcess | None:
-        prefix = self.cfg.prefix(prefix_id)
-        if prefix is None:
+        native = game is not None and game.kind in engines.NATIVE_KINDS
+        prefix = None if native else self.cfg.prefix(prefix_id)
+        if prefix is None and not native:
             self.error(_('El prefijo no existe en la configuración.'))
             return None
-        # Un directorio vacío o inexistente es un prefijo por crear (Proton lo inicializa).
-        ppath = Path(prefix.path)
-        fresh = not ppath.exists() or not any(ppath.iterdir())
-        problems = [] if fresh else prefixes.health(ppath)
-        if fresh:
-            ppath.mkdir(parents=True, exist_ok=True)
-        if problems:
-            self.error(_('Prefijo dañado: ') + " ".join(problems) + _(' Usa Reparar → Recrear prefijo.'))
-            return None
+        fresh = True
+        if prefix is not None:
+            # Un directorio vacío o inexistente es un prefijo por crear (Proton lo inicializa).
+            ppath = Path(prefix.path)
+            fresh = not ppath.exists() or not any(ppath.iterdir())
+            problems = [] if fresh else prefixes.health(ppath)
+            if fresh:
+                ppath.mkdir(parents=True, exist_ok=True)
+            if problems:
+                self.error(_('Prefijo dañado: ') + " ".join(problems) + _(' Usa Reparar → Recrear prefijo.'))
+                return None
         try:
-            plan = build(self.cfg, prefix, exe, args, game, self.report, self.debug, self.runners)
+            plan = build_native(self.cfg, game, self.report) if native else \
+                build(self.cfg, prefix, exe, args, game, self.report, self.debug, self.runners)
         except (LookupError, FileNotFoundError) as e:
             self.error(str(e))
             return None
@@ -253,6 +258,8 @@ class Controller:
         self.append_log(key, f"$ {plan.describe()}")
         if plan.gpu:
             self.append_log(key, f"# GPU: {plan.gpu.name} ({plan.gpu.pci_id}) · runner: {plan.runner.name}")
+        elif native:
+            self.append_log(key, f"# {plan.runner.name}")
         for w in plan.warnings:
             self.append_log(key, f"⚠ {w}")
         if self.debug:
@@ -275,7 +282,7 @@ class Controller:
             if st in (State.EXITED, State.ERROR) and on_exit:
                 GLib.idle_add(lambda: (on_exit(code), False)[1])
 
-        proc = GameProcess(key.replace(":", "_"), plan, prefix.path,
+        proc = GameProcess(key.replace(":", "_"), plan, prefix.path if prefix else "",
                            on_line=lambda s: self.append_log(key, s), on_state=on_state)
         self.procs[key] = proc
 
@@ -290,8 +297,8 @@ class Controller:
                 self.emit("game_started", key)
                 self._session_start(key)
 
-        previous = self._previous_runner(prefix)
-        if plan.runner.kind == "proton" and previous and previous != plan.runner.name and not fresh:
+        previous = self._previous_runner(prefix) if prefix else ""
+        if prefix is not None and plan.runner.kind == "proton" and previous and previous != plan.runner.name and not fresh:
             # Cambio de Proton: el prefijo se actualizará o degradará. Copia antes (sin juegos).
             self.append_log(key, f"# Cambio de Proton en el prefijo: {previous} → {plan.runner.name}. "
                                  "Guardando copia de seguridad (sin juegos)…")
@@ -311,7 +318,7 @@ class Controller:
                 start()
             threading.Thread(target=backup_then_start, daemon=True).start()
         else:
-            if plan.runner.kind == "proton" and prefix.last_runner != plan.runner.name:
+            if prefix is not None and plan.runner.kind == "proton" and prefix.last_runner != plan.runner.name:
                 prefix.last_runner = plan.runner.name
                 self.save()
             start()
@@ -363,6 +370,9 @@ class Controller:
             return
         if game.kind == "blizzard" and game.product and not skip_check:
             self._check_then_launch(game)
+            return
+        if game.kind in engines.NATIVE_KINDS:
+            self.run(game_id, "", game.exe, None, game)
             return
         try:
             exe, args = library.launch_target(self.cfg, game)
@@ -436,6 +446,10 @@ class Controller:
             pref = self.cfg.prefix(g.prefix_id) if g else None
             tree = p.pids()
             exe = g.exe if g and g.exe else ""
+            if p.plan.runner.kind == "native":     # ScummVM, emuladores: sin Proton ni prefijo
+                out.append(running.entry(key, g.name if g else key, g.kind if g else "", "umbral", p.proc.pid,
+                                         [p.proc.pid], exe, "", "", "", p.started, engine=p.plan.runner.name))
+                continue
             out.append(running.entry(
                 key, g.name if g else key, g.kind if g else "", "umbral", p.proc.pid,
                 running.exe_pids(tree, Path(exe).name) if exe else [], exe, p.plan.runner.name,
@@ -528,6 +542,8 @@ class Controller:
         return Path(self.cfg.settings.games_root).expanduser()
 
     def can_move(self, g: Game) -> bool:
+        if g.kind == engines.EMULATOR:      # ROMs: a Juegos/<sistema>/<juego>
+            return Path(g.exe).is_file() and not engines.is_organized(g.exe, self.games_root(), g.system)
         return g.kind == "custom" and installers.can_move(g.exe, self.games_root(),
                                                           [p.path for p in self.cfg.prefixes])
 
@@ -551,7 +567,10 @@ class Controller:
 
         def work():
             try:
-                new = installers.move_game(g.exe, self.games_root())
+                if g.kind == engines.EMULATOR:
+                    new = engines.organize_rom(g.exe, self.games_root(), g.system, g.name)
+                else:
+                    new = installers.move_game(g.exe, self.games_root())
             except OSError as e:
                 GLib.idle_add(lambda: (self.moving.discard(game_id), False)[1])
                 self.error(_("No se pudo mover el juego: {0}").format(e))
@@ -579,6 +598,85 @@ class Controller:
         if sgdb.get_key() and not installers.is_installer(exe):
             self.fetch_cover(g.id, quiet=True)
         return g
+
+    def add_native_game(self, c: "engines.Candidate", name: str) -> Game:
+        """Añade un juego de ScummVM, de emulador o de máquina virtual (sin prefijo de Wine)."""
+        path = c.path
+        root = self.games_root()
+        if c.engine == engines.SCUMMVM and Path(path).parent.resolve() == root.resolve():
+            # disco recién extraído: como las ROMs, agrupado → Juegos/ScummVM/<juego>
+            base = root / "ScummVM"
+            clean = name.replace("/", "-").strip() or Path(path).name
+            dest, n = base / clean, 2
+            while dest.exists():
+                dest, n = base / f"{clean} ({n})", n + 1
+            try:
+                base.mkdir(parents=True, exist_ok=True)
+                Path(path).rename(dest)
+                path = str(dest)
+            except OSError as e:
+                log.warning("No se pudo mover %s a %s: %s", path, dest, e)
+        g = Game(Config.new_id(), name, c.engine, "", path, system=c.system, target=c.target,
+                 cdrom=c.extra.get("cdrom", ""))
+        self.cfg.games.append(g)
+        self.save()
+        self.emit("library")
+        if sgdb.get_key():
+            self.fetch_cover(g.id, quiet=True)
+        return g
+
+    # ------------------------------------------------------------ emuladores
+    def install_emulator(self, key: str) -> None:
+        """Instala un emulador sin sudo (Flathub para tu usuario o AppImage oficial), en segundo plano."""
+        if key in self.installing:
+            return
+        self.installing.add(key)
+        name = engines.EMULATORS[key].name
+        log_key = "emuladores"
+        self.logs.setdefault(log_key, [])
+        self.emit("system")
+
+        def work():
+            try:
+                engines.install(key, lambda line: self.append_log(log_key, line))
+                self.emit("toast", _("{0} instalado").format(name))
+            except RuntimeError as e:
+                self.append_log(log_key, f"⚠ {e}")
+                self.error(_("No se pudo instalar {0}: {1}").format(name, e))
+            GLib.idle_add(lambda: (self.installing.discard(key), self.emit("system"), self.emit("library"), False)[-1])
+        threading.Thread(target=work, daemon=True).start()
+
+    def uninstall_emulator(self, key: str) -> None:
+        name = engines.EMULATORS[key].name
+
+        def work():
+            try:
+                engines.uninstall(key)
+                self.emit("toast", _("{0} desinstalado").format(name))
+            except (RuntimeError, OSError) as e:
+                self.error(_("No se pudo desinstalar {0}: {1}").format(name, e))
+            GLib.idle_add(lambda: (self.emit("system"), self.emit("library"), False)[-1])
+        threading.Thread(target=work, daemon=True).start()
+
+    def extract_disc(self, iso: str, name: str, on_done: Callable[[Path | None, list], None]) -> None:
+        """Extrae un CD/DVD de PC a la carpeta de juegos y lo identifica (en segundo plano).
+        on_done(carpeta, candidatos) en el hilo principal; (None, []) si falla."""
+        root = self.games_root()
+        base = name.replace("/", "-").strip() or Path(iso).stem   # como al mover juegos: «Nombre (2)»
+        dest, n = root / base, 2
+        while dest.exists():
+            dest, n = root / f"{base} ({n})", n + 1
+
+        def work():
+            try:
+                engines.extract_disc(Path(iso), dest)
+                found = [c for c in engines.detect(dest) if c.engine != "extract"]
+            except OSError as e:
+                self.error(_("No se pudo extraer el disco: {0}").format(e))
+                GLib.idle_add(lambda: (on_done(None, []), False)[1])
+                return
+            GLib.idle_add(lambda: (on_done(dest, found), False)[1])
+        threading.Thread(target=work, daemon=True).start()
 
     # ------------------------------------------------------------ SteamGridDB
     def fetch_cover(self, game_id: str, quiet: bool = False) -> None:
@@ -647,7 +745,7 @@ class Controller:
     # ------------------------------------------------------------ tiempo de juego
     def _tracks_time(self, key: str) -> bool:
         g = self.cfg.game(key)
-        return bool(g and g.kind in ("blizzard", "custom"))
+        return bool(g and g.kind in ("blizzard", "custom", *engines.NATIVE_KINDS))
 
     def _session_start(self, key: str) -> None:
         if self._tracks_time(key) and key not in self._sessions:

@@ -100,13 +100,16 @@ def exe_pids(pids: list[int], exe_name: str) -> list[int]:
 
 # ---------------------------------------------------------------- archivo
 def entry(game_id: str, name: str, kind: str, launched_by: str, pid: int, game_pids: list[int],
-          exe: str, proton: str, proton_path: str, prefix: str, started: float) -> dict:
+          exe: str, proton: str, proton_path: str, prefix: str, started: float, engine: str = "") -> dict:
+    """engine: programa que abre el juego si no es Wine (ScummVM, PCSX2…); entonces no hay
+    Proton ni prefijo, y exe es la carpeta o la ROM (exe_name queda vacío)."""
     return {
         "id": game_id, "name": name, "kind": kind, "launched_by": launched_by,
         "pid": pid, "pid_starttime": starttime(pid),
         "game_pids": [{"pid": p, "starttime": starttime(p)} for p in game_pids],
-        "exe": exe, "exe_name": Path(exe).name if exe else "",
+        "exe": exe, "exe_name": Path(exe).name if exe and not engine else "",
         "proton": proton, "proton_path": proton_path, "prefix": prefix, "started": started,
+        "engine": engine,
     }
 
 
@@ -158,6 +161,8 @@ def _wait_gone(targets: list[tuple[int, int | None]], timeout: float) -> bool:
 
 def wineserver_kill(proton_path: str, prefix: str) -> bool:
     """`wineserver -k` del prefijo con el wineserver de ese Proton (o el del sistema)."""
+    if not prefix:            # ScummVM, emuladores: no hay prefijo (y sin él se cerraría ~/.wine)
+        return False
     cands = [Path(proton_path) / "files/bin/wineserver", Path(proton_path) / "dist/bin/wineserver"] \
         if proton_path else []
     ws = next((str(c) for c in cands if c.exists()), None) or "wineserver"

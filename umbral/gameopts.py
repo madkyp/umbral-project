@@ -9,6 +9,7 @@ Claves públicas y estables (independientes de los nombres internos de LaunchOpt
     gamescope_resolution  WxH|screen          gamescope_mode     fullscreen|borderless|window
     gamescope_scaler  fit|integer|stretch     gamescope_filter   linear|nearest|fsr|pixel
     gamescope_args, args                      texto libre
+    fullscreen        on|off|default         (ScummVM y emuladores)
     gpu               auto|vvvv:dddd (ids PCI)
     runner            nombre de un Proton instalado o GE-Proton
     env.NOMBRE=valor  variable de entorno (env.NOMBRE= la quita)
@@ -31,7 +32,8 @@ DEFAULT = {"default", "inherit", ""}
 
 # clave pública -> (campo interno, tipo, invertido)
 BOOLS = {"gamemode": "gamemode", "mangohud": "mangohud", "wayland": "wayland", "writecopy": "writecopy",
-         "wined3d": "use_wined3d", "shader_cache": "gpu_shader_cache", "gamescope": "gamescope"}
+         "wined3d": "use_wined3d", "shader_cache": "gpu_shader_cache", "gamescope": "gamescope",
+         "fullscreen": "fullscreen"}
 INVERTED = {"esync": "no_esync", "fsync": "no_fsync", "ntsync": "no_ntsync"}
 ENUMS = {"mangohud_preset": ("mangohud_preset", list(MANGOHUD_PRESETS)),
          "mangohud_position": ("mangohud_position", list(MANGOHUD_POSITIONS)),
@@ -121,6 +123,8 @@ def apply(cfg: Config, game: Game, pairs: list[tuple[str, str]], runner_names: l
             else:
                 raise OptionError(_("«gpu» espera auto o los ids PCI vvvv:dddd (p. ej. 10de:1f07)."))
         elif key == "runner":
+            if not game.prefix_id:
+                raise OptionError(_("«{0}» no usa Wine: no tiene Proton que cambiar.").format(game.name))
             if game.kind == "blizzard":
                 raise OptionError(_("Los juegos de Blizzard usan el Proton de Battle.net: "
                                     "cámbialo con «--set battlenet runner=…»."))
@@ -174,7 +178,7 @@ def describe(cfg: Config, game: Game) -> dict:
     """Para `umbral --get`: opciones puestas a mano y las efectivas al lanzar."""
     prefix = cfg.prefix(game.prefix_id)
     own = prefix.options if game.id == BATTLENET_ID and prefix else game.options
-    eff = effective_options(cfg, prefix, None if game.id == BATTLENET_ID else game) if prefix else own
+    eff = effective_options(cfg, prefix, None if game.id == BATTLENET_ID else game)
     effective = _public(eff)
     effective["runner"] = eff.runner or (prefix.runner if prefix else None)
     for k in ("esync", "fsync", "ntsync"):                 # sin ajuste explícito, Proton los usa

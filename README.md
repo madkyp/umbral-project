@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.12.0](https://img.shields.io/badge/version-0.12.0-informational)
+![Version 0.13.0](https://img.shields.io/badge/version-0.13.0-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -13,7 +13,7 @@
 
 **A minimal Battle.net launcher for Arch / CachyOS + Hyprland**, built with GTK4 / libadwaita and running games through [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher) + Proton.
 
-Umbral installs the **official Battle.net client** in its own Proton prefix (or imports the one you already have from Faugus, Lutris…), detects the games you install from it — **World of Warcraft: Forever** first — and launches them with one click, checking for updates first without even opening Battle.net. It can also run any other Windows `.exe`, `.msi` or `.bat` in its own prefix.
+Umbral installs the **official Battle.net client** in its own Proton prefix (or imports the one you already have from Faugus, Lutris…), detects the games you install from it — **World of Warcraft: Forever** first — and launches them with one click, checking for updates first without even opening Battle.net. It can also run any other Windows `.exe`, `.msi` or `.bat` in its own prefix, classic adventures through **ScummVM** and console games through the emulator you have installed — it works out which one each game needs.
 
 > *Umbral* is Spanish for *threshold*: the doorway between your Linux desktop and your Windows games.
 
@@ -49,6 +49,24 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 - **My games and programs** — anything you add with **Add**:
   - `.exe` files, `.msi` installers (run through `msiexec`) and `.bat` scripts (through `cmd`).
   - Each one in its **own prefix** (recommended) or in the Battle.net one.
+  - **Not everything goes through Wine** — Umbral identifies what you pick and proposes how to open it:
+    - a **ScummVM** game (folder, or the `.exe` inside one) → ScummVM, which knows the exact edition (*"The Pink Panther: Passport to Peril (Windows/Spanish)"*);
+    - a **PC CD/DVD** (`.iso`) → extracted to the games folder (no mounting, no sudo) and identified;
+    - a **console ROM or disc image** → its emulator. The system is read from the image itself (`SYSTEM.CNF` on PlayStation discs, `PSP_GAME` on UMDs, the disc header on GameCube / Wii, CD vs DVD in `.chd`, `PARAM.SFO` in `.pbp`), not guessed from the extension:
+
+      | System | Emulator (first installed wins) |
+      |---|---|
+      | NES · SNES · N64 · Mega Drive · Master System · Game Gear · PC Engine | ares (one install for all seven) · Mednafen / Mupen64Plus / BlastEm |
+      | Game Boy / Color · GBA | mGBA |
+      | DS · 3DS | melonDS · Azahar |
+      | GameCube / Wii | Dolphin |
+      | PS1 · PS2 · PSP | DuckStation · PCSX2 · PPSSPP |
+      | Atari 2600 | Stella |
+
+    - and a Windows `.exe` → Wine / Proton, as always.
+  - **ROMs are kept tidy**: each one moves to its own folder grouped by system — `~/Games/umbral/games/GBA/Pokémon Sapphire/`, `…/GBA/Pokémon Ruby/`, `…/PS1/Crash Bandicoot/` (a `.cue` takes its `.bin` tracks along). On by default when adding, never overwrites, and also available later from the card's ⋮ menu. Extracted ScummVM discs go to `…/ScummVM/<game>/`.
+  - **System → Emulators** lists every emulator with its status and an **Install** button: Flathub for your user or the official AppImage (DuckStation), **no sudo**; the few only packaged for Arch show the `pacman` command to copy. Flatpak emulators get access to the ROM's folder only.
+  - Emulators aren't bundled: Umbral uses the ones you have (package, AppImage or Flathub). No BIOS, ROMs or operating systems are included. ScummVM and emulator games get GameMode, MangoHud, gamescope, FPS limit, GPU choice, Control Deck and playtime like any other game, plus a fullscreen switch.
   - After running an **installer**, Umbral lists the new executables it left behind and adds the game with one click.
   - **Moves the game into Umbral's games folder** (`~/Games/umbral/games/`, on by default) so it doesn't live in *Downloads* waiting to be deleted by accident. Only the game's own folder moves — a loose `.exe` in *Downloads* moves alone, `bin/` or `Binaries/Win64/` layouts move from the game's root, and installers are never moved. Already-added games can be moved from their ⋮ menu, and removing a game offers to delete its files too (never without asking).
 - **Every card has the same size**, Battle.net games and your own alike:
@@ -115,6 +133,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 **Optional:**
 - `mangohud` + `lib32-mangohud`, `gamemode` + `lib32-gamemode`, `gamescope`
 - `winetricks` — optional prefix dependencies
+- `scummvm` — classic adventure games · `flatpak` — to install emulators from *System → Emulators* without sudo (or your own packages: `ares-emu`, `mgba-qt`, `dolphin-emu`, `ppsspp`, `stella`…)
 - `hyprland` — floating window rule and snippet validation
 - A StatusNotifierItem tray (Waybar, KDE…) — to keep Umbral in the background
 
@@ -215,10 +234,12 @@ Other apps (e.g. [Control Deck](https://github.com/madkyp/control-deck)) can fol
               "prefix": "/…/Games/umbral/game-2", "started": 1790000000.0}]}
   ```
 
+  ScummVM and emulator games have `"engine": "ScummVM"` (or `"PCSX2"`, `"Dolphin"`…), empty `proton` / `prefix` / `exe_name`, `exe` is the game folder or ROM, and `game_pids` is the emulator itself.
+
   `game_pids` are the game's own processes, taken from the process tree Umbral launched — not matched by name, so two different `Game.exe` (RPG Maker) can't be confused. An entry is valid only while its PID exists **and** its `starttime` (field 22 of `/proc/<pid>/stat`) still matches, which rules out reused PIDs. `launched_by` is `battlenet` for games started from the Battle.net client. Games still running when Umbral restarts are kept.
 - **`umbral --stop <id>`** — closes a game; the running Umbral does it without showing its window (exit code 0 = closing, 1 = not running). Works even if Umbral is closed, using `running.json`.
 - **`umbral --set <id> key=value …`** — changes a game's options from outside (all or nothing: one invalid value and nothing changes; exit code 2). The running Umbral applies and saves it; without Umbral, the config is edited directly. Keys:
-  `gamemode`, `mangohud`, `wayland`, `writecopy`, `wined3d`, `shader_cache`, `gamescope`, `esync`, `fsync`, `ntsync` (`on` / `off` / `default`) · `mangohud_preset` (`fps` / `basic` / `full`) · `mangohud_position` · `fps_limit` (0–1000) · `gamescope_resolution` (`640x480`… or `screen`) · `gamescope_mode` · `gamescope_scaler` · `gamescope_filter` · `gamescope_args` · `args` · `gpu` (`auto` or `vvvv:dddd`) · `runner` · `env.NAME=value` (`env.NAME=` removes it). `default` goes back to inheriting from the prefix; for Battle.net they are the prefix's options. `umbral --get <id>` returns the same keys (`options` = set, `effective` = used at launch).
+  `gamemode`, `mangohud`, `wayland`, `writecopy`, `wined3d`, `shader_cache`, `gamescope`, `esync`, `fsync`, `ntsync` (`on` / `off` / `default`) · `mangohud_preset` (`fps` / `basic` / `full`) · `mangohud_position` · `fps_limit` (0–1000) · `gamescope_resolution` (`640x480`… or `screen`) · `gamescope_mode` · `gamescope_scaler` · `gamescope_filter` · `gamescope_args` · `args` · `gpu` (`auto` or `vvvv:dddd`) · `runner` · `fullscreen` (ScummVM and emulators) · `env.NAME=value` (`env.NAME=` removes it). `default` goes back to inheriting from the prefix; for Battle.net they are the prefix's options. `umbral --get <id>` returns the same keys (`options` = set, `effective` = used at launch).
 - **`control-deck hook umbral:<id>`** — if Control Deck is installed, Umbral asks it for extra launch variables (ReShade / vkBasalt) and lets it follow the session (TEMPS, CPU scheduler) while the game runs.
 
 ---
@@ -259,6 +280,8 @@ The suite runs without GTK, root or network: GPU detection is tested with real a
 | WoW: Forever **beta** (DX12 / VKD3D and DX11 / DXVK) on NVIDIA (RTX 2070, driver 615) | ✅ Tested |
 | Direct launch + version check | ✅ Tested |
 | WoW: Forever **final release** (Nov 4, 2026) | ⏳ Product ID and folder not known yet — detected generically |
+| ScummVM: *The Pink Panther: Passport to Peril* (Spanish CD), from the `.iso` | ✅ Tested |
+| Emulators (ares, mGBA, melonDS, Azahar, Dolphin, DuckStation, PCSX2, PPSSPP, BlastEm, Stella…) | 🧪 Detection, commands and ROM folders covered by tests (command-line flags checked in each emulator's source); not launched on real hardware yet |
 | AMD / Intel / hybrid GPUs | 🧪 Covered by tests with simulated hardware, not on real hardware yet |
 | `battlenet://` URIs or `--exec` to start a game from Battle.net | ❌ Don't launch WoW Forever (tested), so they aren't used |
 

@@ -176,7 +176,13 @@ def start_deck_session(pid: int, game_id: str) -> None:
             pass
 
 
-def effective_options(cfg: Config, prefix: Prefix, game: Game | None) -> LaunchOptions:
+# ScummVM y emuladores: en pantalla completa salvo que se cambie en ⚙
+NATIVE_DEFAULTS = LaunchOptions(fullscreen=True)
+
+
+def effective_options(cfg: Config, prefix: Prefix | None, game: Game | None) -> LaunchOptions:
+    if prefix is None:
+        return merged(NATIVE_DEFAULTS, game.options if game else LaunchOptions())
     base = BATTLENET_DEFAULTS if prefix.id == "battlenet" else LaunchOptions()
     return merged(base, prefix.options, game.options if game else LaunchOptions())
 
@@ -227,6 +233,30 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
     else:
         cmd = [str(runner.path), *_windows_command(exe)]
 
+    wrappers, target, deck = _tools(opts, env, warnings, game, report)
+    argv = wrappers + cmd + (args or []) + shlex.split(opts.args or "")
+    cwd = str(Path(exe).parent) if Path(exe).is_absolute() and Path(exe).parent.exists() else prefix.path
+    return LaunchPlan(argv, env, cwd, runner, target, warnings, deck_session=deck)
+
+
+def build_native(cfg: Config, game: Game, report: gpumod.GpuReport | None = None) -> LaunchPlan:
+    """ScummVM y emuladores: sin prefijo ni Proton, con las mismas herramientas (GameMode,
+    MangoHud, gamescope, límite de FPS, GPU y Control Deck)."""
+    from . import engines
+    opts = merged(NATIVE_DEFAULTS, game.options)
+    cmd, cwd = engines.command(game, opts.fullscreen)
+    warnings: list[str] = []
+    env: dict[str, str] = {}
+    wrappers, target, deck = _tools(opts, env, warnings, game, report, native=True)
+    argv = wrappers + cmd + shlex.split(opts.args or "")
+    name = engines.engine_status(game)[0] or game.kind
+    return LaunchPlan(argv, env, cwd, Runner(name, Path(cmd[0]), "native"), target, warnings, deck_session=deck)
+
+
+def _tools(opts: LaunchOptions, env: dict[str, str], warnings: list[str], game: Game | None,
+           report: gpumod.GpuReport | None, native: bool = False) -> tuple[list[str], gpumod.Gpu | None, bool]:
+    """GPU, gamescope, GameMode, MangoHud, límite de FPS y Control Deck (modifica env y warnings).
+    Devuelve (envoltorios del comando, GPU elegida, si Control Deck acompaña la partida)."""
     target = None
     if report is not None:
         genv, target = gpumod.gpu_env(report, opts.gpu)
@@ -248,6 +278,8 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
         env["MANGOHUD_CONFIG"] = mangohud_config(opts.mangohud_preset, opts.mangohud_position)
         if not opts.gamescope:
             env["MANGOHUD"] = "1"
+            if native and shutil.which("mangohud"):
+                wrappers.append("mangohud")   # OpenGL (ScummVM, emuladores): MANGOHUD=1 solo cubre Vulkan
     # Límite de FPS: con gamescope, su «-r»; si no, el limitador de MangoHud (sirve para DXVK y
     # VKD3D, también con la superposición oculta); sin MangoHud, las variables de Proton.
     if fps > 0 and not opts.gamescope:
@@ -255,6 +287,10 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
             base = env.get("MANGOHUD_CONFIG", "no_display")
             env["MANGOHUD_CONFIG"] = f"{base},fps_limit={fps}"
             env["MANGOHUD"] = "1"
+            if native and "mangohud" not in wrappers:
+                wrappers.append("mangohud")
+        elif native:
+            warnings.append(_("Sin MangoHud ni gamescope no se puede limitar los FPS; se ignora."))
         else:
             env["DXVK_FRAME_RATE"] = env["VKD3D_FRAME_RATE"] = str(fps)
             warnings.append(_("Sin MangoHud el límite de FPS depende de tu Proton (DXVK_FRAME_RATE)."))
@@ -267,10 +303,7 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
         else:
             env.setdefault(k, str(v))
     env.update(opts.env)  # las variables del usuario siempre ganan
-    argv = wrappers + cmd + (args or []) + shlex.split(opts.args or "")
-    cwd = str(Path(exe).parent) if Path(exe).is_absolute() and Path(exe).parent.exists() else prefix.path
-    return LaunchPlan(argv, env, cwd, runner, target, warnings,
-                      deck_session=bool(hook.get("session") or hook.get("overlay")))
+    return wrappers, target, bool(hook.get("session") or hook.get("overlay"))
 
 
 def _windows_command(exe: str) -> list[str]:
@@ -297,7 +330,7 @@ class State:
 class GameProcess:
     """Proceso lanzado con log a archivo y callbacks (llamados desde un hilo)."""
 
-    def __init__(self, key: str, plan: LaunchPlan, prefix_path: str,
+    def __init__(self, key: str, plan: LaunchPlan, prefix_path: str,  # prefix_path «» = sin Wine
                  on_line: Callable[[str], None] | None = None,
                  on_state: Callable[[str, int | None], None] | None = None):
         self.key = key
@@ -370,7 +403,10 @@ class GameProcess:
         self._set(State.STOPPING)
         from . import running
         tree = self.pids()
-        game_pids = running.exe_pids(tree, Path(exe).name) if exe else []
+        if self.plan.runner.kind == "native":
+            game_pids = [self.proc.pid]        # el propio emulador (o gamescope/gamemoderun que lo envuelve)
+        else:
+            game_pids = running.exe_pids(tree, Path(exe).name) if exe else []
         running.stop_game({"pid": self.proc.pid, "pid_starttime": running.starttime(self.proc.pid),
                            "game_pids": [{"pid": p, "starttime": running.starttime(p)} for p in game_pids],
                            "proton_path": str(self.plan.runner.path) if self.plan.runner.kind == "proton" else "",
@@ -392,8 +428,8 @@ class GameProcess:
 
 
 def kill_wineserver(runner: Runner, prefix_path: str) -> bool:
-    ws = runner.wineserver
-    if not ws:
+    ws = runner.wineserver if runner.kind != "native" else None
+    if not ws or not prefix_path:
         return False
     try:
         subprocess.run([str(ws), "-k"], env={**os.environ, "WINEPREFIX": prefix_path},

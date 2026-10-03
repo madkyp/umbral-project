@@ -40,6 +40,7 @@ class LaunchOptions:
     gs_scaler: str | None = None           # fit | integer | stretch
     gs_filter: str | None = None           # linear | nearest | fsr | pixel
     gpu: str | None = None              # "auto" o "vvvv:dddd" (ids PCI)
+    fullscreen: bool | None = None      # ScummVM y emuladores: pantalla completa
 
     @classmethod
     def from_dict(cls, d: dict) -> "LaunchOptions":
@@ -79,9 +80,9 @@ class Prefix:
 class Game:
     id: str
     name: str
-    kind: str                 # "battlenet" | "blizzard" | "custom"
-    prefix_id: str
-    exe: str                  # ruta Linux absoluta al .exe
+    kind: str                 # "battlenet" | "blizzard" | "custom" (Wine) | "scummvm" | "emulator" | "vm"
+    prefix_id: str            # "" en los que no van por Wine
+    exe: str                  # ruta Linux absoluta al .exe (o carpeta de ScummVM, ROM, disco de la VM)
     options: LaunchOptions = field(default_factory=LaunchOptions)
     product: str = ""         # uid de Battle.net (p. ej. wow_classic_beta)
     auto: bool = False        # generado por el detector; se refresca solo
@@ -90,6 +91,9 @@ class Game:
     icon: str = ""            # icono elegido por el usuario (sustituye al extraído del .exe)
     playtime: int = 0         # segundos jugados en total
     last_played: str = ""     # ISO 8601 de la última partida
+    system: str = ""          # emuladores: gba, ps1, ps2, gc… · VM: win9x
+    target: str = ""          # ScummVM: id del juego (p. ej. pink:peril)
+    cdrom: str = ""           # VM: imagen del CD
 
     @classmethod
     def from_dict(cls, d: dict) -> "Game":

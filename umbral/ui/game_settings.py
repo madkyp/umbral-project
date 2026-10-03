@@ -8,7 +8,7 @@ from pathlib import Path
 from gi.repository import Adw, GLib, Gtk
 
 from .. import gpu as gpumod
-from .. import library, wowconfig
+from .. import engines, library, wowconfig
 from ..config import BATTLENET_ID, Game, LaunchOptions
 from ..controller import Controller
 from ..launcher import (GS_FILTERS, GS_MODES, GS_RESOLUTIONS, GS_SCALERS, MANGOHUD_POSITIONS, MANGOHUD_PRESETS,
@@ -46,7 +46,8 @@ class GameSettings(Adw.PreferencesDialog):
     def __init__(self, ctl: Controller, game: Game):
         super().__init__(title=_('Ajustes · {0}').format(game.name), search_enabled=False)
         self.ctl, self.game = ctl, game
-        self.prefix = ctl.cfg.prefix(game.prefix_id)
+        self.native = game.kind in engines.NATIVE_KINDS     # ScummVM, emuladores: sin Wine
+        self.prefix = None if self.native else ctl.cfg.prefix(game.prefix_id)
         # En Battle.net se editan las opciones del prefijo (afectan a todo lo que corre en él)
         self.target: LaunchOptions = self.prefix.options if game.id == BATTLENET_ID else game.options
         self.eff = effective_options(ctl.cfg, self.prefix, None if game.id == BATTLENET_ID else game)
@@ -61,13 +62,22 @@ class GameSettings(Adw.PreferencesDialog):
         g = Adw.PreferencesGroup()
         self.name_row = Adw.EntryRow(title=_('Nombre'), text=self.game.name)
         g.add(self.name_row)
-        if self.game.kind == "custom":
+        if self.game.kind == "custom" or self.native:
             self._exe_initial = self.game.exe
-            self.exe_row = Adw.EntryRow(title=_("Ejecutable (.exe)"), text=self.game.exe)
+            title = {engines.SCUMMVM: _("Carpeta del juego"), engines.EMULATOR: _("ROM o imagen de disco"),
+                     engines.VM: _("Disco de la máquina virtual")}.get(self.game.kind, _("Ejecutable (.exe)"))
+            self.exe_row = Adw.EntryRow(title=title, text=self.game.exe)
             pick = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"])
             pick.connect("clicked", self._pick_exe)
             self.exe_row.add_suffix(pick)
             g.add(self.exe_row)
+        if self.native:
+            prog, install = engines.engine_status(self.game)
+            what = {engines.SCUMMVM: f"ScummVM · {self.game.target}",
+                    engines.EMULATOR: f"{engines.system_name(self.game.system)} · {prog}",
+                    engines.VM: "QEMU · Windows 9x"}.get(self.game.kind, prog)
+            g.add(Adw.ActionRow(use_markup=False, title=_("Se abre con"), subtitle=what if not install else
+                                _("{0} — no instalado: {1}").format(what, install), subtitle_selectable=True))
         elif self.game.kind == "blizzard":
             g.add(Adw.ActionRow(use_markup=False, title=_('Al pulsar «Jugar»'),
                                 subtitle=_('Comprueba la versión con Blizzard: si coincide lanza el juego directamente; si no, abre Battle.net para actualizar.')))
@@ -93,6 +103,9 @@ class GameSettings(Adw.PreferencesDialog):
         if self.game.id != BATTLENET_ID:
             page.add(self._look_group())
 
+        if self.native:
+            self.runner_row = None
+            return self._env_group(page)
         if self.game.kind == "blizzard":
             rg = Adw.PreferencesGroup(title=_('Runner'))
             rg.add(Adw.ActionRow(use_markup=False, title=_('Proton del prefijo de Battle.net: {0}').format(self.prefix.runner),
@@ -177,6 +190,26 @@ class GameSettings(Adw.PreferencesDialog):
         return page
 
     def _pick_exe(self, *_a):
+        if self.game.kind == engines.SCUMMVM:
+            dlg = Gtk.FileDialog(title=_('Elegir la carpeta del juego'))
+
+            def chosen(d, res):
+                try:
+                    self.exe_row.set_text(d.select_folder_finish(res).get_path())
+                except GLib.Error:
+                    pass
+            dlg.select_folder(self.get_root(), None, chosen)
+            return
+        if self.native:
+            dlg = Gtk.FileDialog(title=_('Elegir archivo'))
+
+            def chosen(d, res):
+                try:
+                    self.exe_row.set_text(d.open_finish(res).get_path())
+                except GLib.Error:
+                    pass
+            dlg.open(self.get_root(), None, chosen)
+            return
         dlg = Gtk.FileDialog(title=_('Elegir ejecutable'))
         f = Gtk.FileFilter(name=_('Ejecutables de Windows'))
         f.add_suffix("exe")
@@ -224,7 +257,13 @@ class GameSettings(Adw.PreferencesDialog):
         m.add(self.mh_row)
         page.add(m)
         page.add(self._gamescope_group())
-        page.add(g)
+        if self.native:
+            fs = Adw.SwitchRow(title=_("Pantalla completa"), active=bool(self.eff.fullscreen),
+                               subtitle=_("Al abrir el juego. Desactivado, se abre en ventana."))
+            self.switches["fullscreen"] = fs
+            self.gs_group.add(fs)
+        else:
+            page.add(g)
 
         t = Adw.PreferencesGroup(title=_('Herramientas'))
         for field, title, sub in TOOLS:
@@ -236,7 +275,7 @@ class GameSettings(Adw.PreferencesDialog):
 
     def _gamescope_group(self) -> Adw.PreferencesGroup:
         """Resolución y escalado con gamescope, en opciones legibles."""
-        grp = Adw.PreferencesGroup(title=_("Pantalla"))
+        grp = self.gs_group = Adw.PreferencesGroup(title=_("Pantalla"))
         hz = monitor_refresh()
         opts = [0, 30, 60, 90, 120, 144, 165, 240]
         if hz and hz not in opts:
@@ -353,7 +392,7 @@ class GameSettings(Adw.PreferencesDialog):
         if name:
             g.name = name
             library.sync_prefix_name(self.ctl.cfg, g)
-        if g.kind == "custom":
+        if g.kind == "custom" or self.native:
             # Solo si lo has editado tú: el juego puede haberse movido mientras el diálogo
             # estaba abierto y no hay que pisar la ruta nueva con la antigua.
             new_exe = self.exe_row.get_text().strip()

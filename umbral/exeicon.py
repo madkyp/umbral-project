@@ -10,6 +10,7 @@ import hashlib
 import io
 import logging
 import mmap
+import re
 import struct
 from pathlib import Path
 
@@ -164,6 +165,13 @@ def icon_candidates(exe: str, kind: str) -> list[Path]:
     """
     p = Path(exe)
     out: list[Path] = []
+    if p.is_dir():
+        # Juego de ScummVM: el .exe de Windows que traiga (el más grande que no sea un instalador)
+        skip = re.compile(r"setup|instal|unin|autorun|teaser|demo|dxsetup|directx|winhlp|win32s|"
+                          r"recover|batchman|readme|config", re.I)
+        exes = [x for x in (*p.glob("*"), *p.glob("*/*")) if x.suffix.lower() == ".exe" and x.is_file()
+                and not skip.search(x.stem)]
+        return sorted(exes, key=lambda x: x.stat().st_size, reverse=True)[:3]
     if kind == "blizzard":
         for root in (p.parent, *p.parents[:3]):
             if (root / ".build.info").exists():

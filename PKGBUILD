@@ -1,6 +1,6 @@
 # Maintainer: madky
 pkgname=umbral
-pkgver=0.12.0
+pkgver=0.13.0
 pkgrel=1
 pkgdesc="Minimal Battle.net launcher for Arch/Hyprland: official client, WoW Forever, umu + Proton (GTK4/libadwaita)"
 arch=('any')
@@ -14,6 +14,8 @@ optdepends=('gamemode: CPU tweaks while playing'
             'mangohud: performance overlay'
             'lib32-mangohud: overlay for 32-bit games'
             'winetricks: optional prefix dependencies'
+            'scummvm: classic adventure games'
+            'flatpak: install emulators from System > Emulators without sudo'
             'hyprland: floating window rule and snippet validation')
 # Built from the project tree (clone the repo, then run makepkg -si).
 source=()

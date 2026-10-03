@@ -7,7 +7,7 @@ from pathlib import Path
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
-from .. import APP_NAME, battlenet, exeicon, installers, integration, playtime, prefixes
+from .. import APP_NAME, battlenet, engines, exeicon, installers, integration, playtime, prefixes
 from ..config import BATTLENET_ID, Game
 from ..controller import Controller
 from ..launcher import State
@@ -242,7 +242,9 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             tone = "tone-wow" if g.product.startswith("wow") else f"tone-{zlib.crc32(g.id.encode()) % 5}"
             cover.add_css_class(tone)
-            name = "applications-games-symbolic" if g.kind == "blizzard" else "application-x-executable-symbolic"
+            name = {"blizzard": "applications-games-symbolic", engines.EMULATOR: "input-gaming-symbolic",
+                    engines.SCUMMVM: "media-optical-symbolic", engines.VM: "computer-symbolic"}.get(
+                        g.kind, "application-x-executable-symbolic")
             cover.set_child(Gtk.Image(icon_name=name, pixel_size=72, css_classes=["cover-icon"],
                                       valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER))
         return cover
@@ -334,6 +336,8 @@ class MainWindow(Adw.ApplicationWindow):
         if g.kind == "custom":
             badge_txt = _('Prefijo Battle.net') if g.prefix_id == BATTLENET_ID else \
                 (_("Instalador") if installers.is_installer(g.exe) else _('Prefijo propio'))
+        if g.kind in engines.NATIVE_KINDS:
+            badge_txt = engines.short_label(g)
         if g.product == "wow_classic_beta":
             badge_txt = "Beta"
         if badge_txt:
@@ -349,6 +353,9 @@ class MainWindow(Adw.ApplicationWindow):
         meta = Gtk.Box(spacing=6)
         prefix = self.ctl.cfg.prefix(g.prefix_id)
         runner = g.options.runner or (prefix.runner if prefix else "?")
+        if g.kind in engines.NATIVE_KINDS:
+            prog, install = engines.engine_status(g)
+            runner = prog if not install else _("{0} (no instalado)").format(prog)
         played = playtime.summary(g.playtime, g.last_played)
         meta.append(Gtk.Label(label=played or runner, xalign=0, tooltip_text=runner,
                               css_classes=["caption", "dim-label"], ellipsize=3, hexpand=True))
@@ -628,7 +635,7 @@ class MainWindow(Adw.ApplicationWindow):
         g = self.ctl.cfg.game(gid)
         if g is None or not g.exe:
             return
-        folder = installers.game_folder(g.exe)
+        folder = Path(g.exe) if Path(g.exe).is_dir() else installers.game_folder(g.exe)
         if not folder.is_dir():
             self.ctl.error(_("La carpeta del juego no existe: {0}").format(folder))
             return
@@ -695,8 +702,17 @@ class MainWindow(Adw.ApplicationWindow):
                      and [x.id for x in self.ctl.prefix_users(p.id)] == [gid] and Path(p.path).exists())
         files = None
         if self.ctl.owns_files(g):
-            src, is_dir = installers.game_source(g.exe)
-            files = src if is_dir else Path(g.exe).parent   # en la carpeta de juegos siempre hay una carpeta propia
+            if g.kind == engines.SCUMMVM:
+                files = Path(g.exe)          # la carpeta del disco extraído
+            elif g.kind == engines.EMULATOR and engines.is_organized(g.exe, self.ctl.games_root(), g.system):
+                files = Path(g.exe).parent   # Juegos/<sistema>/<juego>: su carpeta propia
+            elif g.kind == "custom":
+                src, is_dir = installers.game_source(g.exe)
+                files = src if is_dir else Path(g.exe).parent   # en la carpeta de juegos siempre hay una carpeta propia
+        if files is not None and (files.resolve() == self.ctl.games_root().resolve()
+                                  or files.parent.resolve() == self.ctl.games_root().resolve()
+                                  and g.kind == engines.EMULATOR):
+            files = None                     # nunca la carpeta de juegos entera ni la de un sistema
         if not exclusive and files is None:
             self.ctl.remove_game(gid)
             return

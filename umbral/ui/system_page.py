@@ -8,7 +8,7 @@ import threading
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from .. import gpu as gpumod
-from .. import integration, paths, runners
+from .. import engines, integration, paths, runners
 from ..controller import Controller
 from ..i18n import _
 
@@ -160,7 +160,7 @@ class SystemPage(Adw.PreferencesPage):
         for g in self._dynamic + [self._static_hypr, self._static_look, self._static_sgdb, self._static_paths]:
             if g.get_parent():
                 self.remove(g)
-        self._dynamic = [self._gpu_group(), self._runner_group()]
+        self._dynamic = [self._gpu_group(), self._runner_group(), self._emulator_group()]
         for g in self._dynamic:
             self.add(g)
         for g in (self._static_hypr, self._static_look, self._static_sgdb, self._static_paths):
@@ -225,6 +225,47 @@ class SystemPage(Adw.PreferencesPage):
             row.add_prefix(Gtk.Image(icon_name="application-x-executable-symbolic"))
             if r.is_ge:
                 row.add_suffix(Gtk.Label(label="GE", css_classes=["status-chip"], valign=Gtk.Align.CENTER))
+            g.add(row)
+        return g
+
+    def _emulator_group(self) -> Adw.PreferencesGroup:
+        """Emuladores para las ROMs: estado e instalación sin sudo (Flathub para tu usuario o AppImage)."""
+        g = Adw.PreferencesGroup(
+            title=_("Emuladores"),
+            description=_("Abren las ROMs y discos de consola. «Instalar» los baja de Flathub para tu usuario "
+                          "(o la AppImage oficial), sin sudo. Las BIOS y las ROMs no se incluyen."))
+        log = Gtk.Button(icon_name="utilities-terminal-symbolic", css_classes=["flat"],
+                         tooltip_text=_("Ver el registro de instalación"))
+        log.connect("clicked", lambda *_a: self.ctl.emit("show_log", "emuladores"))
+        g.set_header_suffix(log)
+        how_label = {"package": _("Instalado (paquete)"), "flatpak": _("Instalado (Flathub)"),
+                     "appimage": _("Instalado (AppImage)")}
+        for key, emu in engines.EMULATORS.items():
+            systems = engines.systems_of(key) or ([_("Aventuras gráficas")] if key == "scummvm" else [])
+            how = engines.installed_as(key)
+            row = Adw.ActionRow(use_markup=False, title=emu.name,
+                                subtitle=" · ".join(systems) + " — " + (how_label[how] if how else _("No instalado")))
+            row.add_prefix(Gtk.Image(icon_name="object-select-symbolic" if how else "input-gaming-symbolic",
+                                     css_classes=["success"] if how else []))
+            if key in self.ctl.installing:
+                row.add_suffix(Adw.Spinner())
+            elif how in ("flatpak", "appimage"):
+                b = Gtk.Button(label=_("Desinstalar"), valign=Gtk.Align.CENTER, css_classes=["flat"])
+                b.connect("clicked", lambda _b, k=key: self.ctl.uninstall_emulator(k))
+                row.add_suffix(b)
+            elif not how and engines.can_install(key):
+                b = Gtk.Button(label=_("Instalar"), valign=Gtk.Align.CENTER, css_classes=["suggested-action"],
+                               tooltip_text=_("Flathub: {0}").format(emu.flatpak) if emu.flatpak and not emu.appimage_url
+                               else _("AppImage oficial: {0}").format(emu.appimage_url))
+                b.connect("clicked", lambda _b, k=key: self.ctl.install_emulator(k))
+                row.add_suffix(b)
+            elif not how and emu.package:
+                cmd = f"sudo pacman -S {emu.package}"
+                row.set_subtitle(row.get_subtitle() + f" · {cmd}")
+                b = Gtk.Button(icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                               tooltip_text=_('Copiar comando (Umbral nunca ejecuta sudo por ti)'))
+                b.connect("clicked", lambda _b, t=cmd: copy_text(_b, t))
+                row.add_suffix(b)
             g.add(row)
         return g
 
