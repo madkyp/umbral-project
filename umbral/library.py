@@ -33,6 +33,17 @@ def sync_prefix_name(cfg: Config, g: Game) -> bool:
     return True
 
 
+def prune_prefixes(cfg: Config) -> list[str]:
+    """Quita de la lista los prefijos cuya carpeta ya no existe (p. ej. borrados desde
+    Control Deck) y que ningún juego usa. Battle.net y los importados se conservan."""
+    used = {g.prefix_id for g in cfg.games}
+    gone = [p for p in cfg.prefixes if p.id != BATTLENET_ID and not p.imported
+            and p.id not in used and not Path(p.path).exists()]
+    for p in gone:
+        cfg.prefixes.remove(p)
+    return [f"- prefix {p.name}" for p in gone]
+
+
 def sync_detected(cfg: Config) -> list[str]:
     """Añade/actualiza/quita entradas auto de juegos Blizzard. Devuelve cambios."""
     changes: list[str] = []

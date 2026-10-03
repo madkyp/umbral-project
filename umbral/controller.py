@@ -99,6 +99,7 @@ class Controller:
                     changes.append(f"~ {g.name}")
             if g.kind == "custom" and library.sync_prefix_name(self.cfg, g):
                 changes.append(f"~ prefix {g.name}")
+        changes += library.prune_prefixes(self.cfg)
         if changes:
             self.save()
             for c in changes:
