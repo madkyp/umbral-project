@@ -17,6 +17,11 @@ from .system_page import SystemPage
 from .wizard import SetupWizard
 from ..i18n import _
 
+def _neg(text: str) -> str:
+    """Clave que ordena al revés una fecha ISO (más reciente primero) dentro de una tupla."""
+    return "".join(chr(0x10FFFF - ord(c)) for c in text)
+
+
 def _fold(text: str) -> str:
     """Minúsculas y sin tildes, para buscar «piramide» y encontrar «Pirámide»."""
     import unicodedata
@@ -41,6 +46,14 @@ class MainWindow(Adw.ApplicationWindow):
         self._search_text = ""           # búsqueda por título en «Mis juegos y programas»
         self._search_open = False
         self._search_entry: Gtk.SearchEntry | None = None
+        self._cards: dict[str, Gtk.FlowBoxChild] = {}     # id del juego → su tarjeta
+        self._iconless: set[str] = set()                   # tarjetas esperando a que se extraiga su icono
+        self._mine: dict[str, Game] = {}                   # juegos de «Mis juegos y programas»
+        self._folded: dict[str, str] = {}                  # nombre sin tildes, para buscar
+        self._hero_widget: Gtk.Widget | None = None
+        self._mine_flow: Gtk.FlowBox | None = None
+        self._rebuild_queued = self._icons_queued = False
+        self._css_dirty = False
         self._tint_css = Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self._tint_css,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2)
@@ -99,12 +112,17 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ---------------------------------------------------------------- eventos
     def _on_event(self, ev: str, *a):
-        if ev in ("library", "system", "icons"):
-            self.rebuild_library()
+        if ev in ("library", "system"):
+            self._queue_rebuild()                     # las ráfagas se agrupan en una sola
+        elif ev == "icons":
+            self._queue_icons()
         elif ev == "state":
-            self.rebuild_library()
+            self._refresh_game(a[0])                  # solo su tarjeta (o el banner de Battle.net)
             if a[1] == State.ERROR:
                 self._show_console(a[0])
+        elif ev == "played":
+            for key in a[0]:
+                self._refresh_game(key)
         elif ev == "log":
             key, line = a
             if key == self.console_key:
@@ -130,7 +148,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _scan_external(self):
         if self.ctl.scan_external():
-            self.rebuild_library()
+            self._queue_rebuild()
         return True
 
     def _minimize_for_game(self):
@@ -166,31 +184,97 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ---------------------------------------------------------------- biblioteca
     def rebuild_library(self):
+        """Reconstrucción completa: al añadir/quitar juegos o cambiar el sistema. Empezar o terminar
+        una partida, filtrar, buscar u ordenar no pasan por aquí (ver _refresh_game y _apply_filters)."""
+        self._rebuild_queued = False
         while (c := self.library_box.get_first_child()) is not None:
             self.library_box.remove(c)
-        self._search_entry = None            # se recrea con «Mis juegos y programas»
-        if not self.ctl.battlenet_ready() and not self.ctl.is_running(BATTLENET_ID):
-            self.library_box.append(self._setup_prompt())
-        else:
-            self.library_box.append(self._hero())
+        self._search_entry = self._mine_flow = None    # se recrean con «Mis juegos y programas»
+        self._cards.clear()
+        self._iconless.clear()
+        self._hero_widget = self._top_banner()
+        self.library_box.append(self._hero_widget)
         games = [g for g in self.ctl.cfg.games if g.id != BATTLENET_ID and not g.hidden]
         blizzard = sorted((g for g in games if g.kind == "blizzard"),
                           key=lambda g: (not g.product.startswith("wow"), g.name.lower()))
-        mine = self._sorted([g for g in games if g.kind != "blizzard"])
+        mine = [g for g in games if g.kind != "blizzard"]
+        self._mine = {g.id: g for g in mine}
+        self._folded = {g.id: _fold(g.name) for g in mine}
         # Cada biblioteca solo aparece si tiene algo
         self._section(_('Biblioteca Battle.net'), blizzard)
         self._section(_('Mis juegos y programas'), mine, filters=True)
+        self._flush_css()
+
+    def _top_banner(self) -> Gtk.Widget:
+        if not self.ctl.battlenet_ready() and not self.ctl.is_running(BATTLENET_ID):
+            return self._setup_prompt()
+        return self._hero()
+
+    def _queue_rebuild(self):
+        """Agrupa los avisos seguidos (sincronizar, iconos, cambios de juegos) en una sola reconstrucción."""
+        if not self._rebuild_queued:
+            self._rebuild_queued = True
+            GLib.timeout_add(120, lambda: (self._rebuild_queued and self.rebuild_library(), False)[1])
+
+    def _queue_icons(self):
+        """Iconos recién extraídos: solo se repintan las tarjetas que los esperaban."""
+        if self._icons_queued:
+            return
+        self._icons_queued = True
+
+        def run():
+            self._icons_queued = False
+            for gid in list(self._iconless):
+                g = self.ctl.cfg.game(gid)
+                if g is not None and self.ctl.game_icon(g) is not None:
+                    self._refresh_game(gid)
+            return False
+        GLib.timeout_add(150, run)
+
+    def _refresh_game(self, gid: str):
+        """Repinta solo lo que muestra ese juego: su tarjeta o, si es Battle.net, el banner."""
+        if gid == BATTLENET_ID and self._hero_widget is not None:
+            new = self._top_banner()
+            self.library_box.insert_child_after(new, self._hero_widget)
+            self.library_box.remove(self._hero_widget)
+            self._hero_widget = new
+            return
+        child, g = self._cards.get(gid), self.ctl.cfg.game(gid)
+        if child is None or g is None:
+            self._queue_rebuild()                      # juego nuevo o desconocido: reconstrucción
+            return
+        child.set_child(self._card(g))
+        self._flush_css()
+        if gid in self._mine and self.ctl.cfg.settings.library_sort != "name" and self._mine_flow:
+            self._mine_flow.invalidate_sort()        # el tiempo o la fecha pueden cambiar el orden
 
     SORTS = {"name": _("Nombre"), "recent": _("Jugado recientemente"), "playtime": _("Más horas")}
 
-    def _sorted(self, games: list[Game]) -> list[Game]:
+    def _sort_key(self, g: Game) -> tuple:
         how = self.ctl.cfg.settings.library_sort
-        by_name = sorted(games, key=lambda g: g.name.lower())
+        name = g.name.lower()
         if how == "recent":     # los nunca jugados, al final y por nombre
-            return sorted(by_name, key=lambda g: g.last_played or "", reverse=True)
+            return (not g.last_played, _neg(g.last_played or ""), name)
         if how == "playtime":
-            return sorted(by_name, key=lambda g: g.playtime, reverse=True)
-        return by_name
+            return (-g.playtime, name)
+        return (name,)
+
+    def _compare(self, a: Gtk.FlowBoxChild, b: Gtk.FlowBoxChild) -> int:
+        ga, gb = self._mine.get(a.get_name()), self._mine.get(b.get_name())
+        if ga is None or gb is None:
+            return 0
+        ka, kb = self._sort_key(ga), self._sort_key(gb)
+        return (ka > kb) - (ka < kb)
+
+    def _visible(self, child: Gtk.FlowBoxChild) -> bool:
+        gid = child.get_name()
+        g = self._mine.get(gid)
+        if g is None:
+            return True
+        current = self.ctl.cfg.settings.library_filter
+        if current != "all" and self._category(g) != current:
+            return False
+        return _fold(self._search_text) in self._folded.get(gid, "")
 
     @staticmethod
     def _category(g: Game) -> str:
@@ -246,8 +330,10 @@ class MainWindow(Adw.ApplicationWindow):
                                   max_children_per_line=30, halign=Gtk.Align.START, hexpand=True,
                                   valign=Gtk.Align.CENTER)
                 first = None
+                self._chips = {}
                 for key, label, n in options:
                     b = Gtk.ToggleButton(css_classes=["filter-chip"], active=key == current, group=first)
+                    self._chips[key] = b
                     first = first or b
                     row = Gtk.Box(spacing=6)
                     row.append(Gtk.Label(label=label))
@@ -269,20 +355,23 @@ class MainWindow(Adw.ApplicationWindow):
             sort_box.append(sort)
             tools.append(sort_box)
             self.library_box.append(tools)
-            if current != "all":
-                games = [g for g in games if self._category(g) == current]
+            if current != self.ctl.cfg.settings.library_filter:
+                self.ctl.cfg.settings.library_filter = current      # el filtro guardado ya no existe
         flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, halign=Gtk.Align.START,
                            column_spacing=18, row_spacing=18, min_children_per_line=1,
                            max_children_per_line=6)
-        for g in games:
+        for g in games:                      # todas: filtros y búsqueda solo ocultan tarjetas
             flow.append(self._card(g))
-            flow.get_last_child().set_name(_fold(g.name))     # para la búsqueda
+            child = flow.get_last_child()
+            child.set_name(g.id)
+            self._cards[g.id] = child
         self.library_box.append(flow)
         if filters:
-            self._search_flow = flow
+            self._mine_flow = flow
             self._no_match = Gtk.Label(css_classes=["dim-label"], xalign=0, visible=False)
             self.library_box.append(self._no_match)
-            flow.set_filter_func(lambda child: _fold(self._search_text) in child.get_name())
+            flow.set_filter_func(self._visible)
+            flow.set_sort_func(self._compare)
             self._search_entry.connect("search-changed", self._on_search)
             self._update_no_match()
             if self._search_open:
@@ -302,16 +391,18 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_search(self, entry: Gtk.SearchEntry):
         self._search_text = entry.get_text().strip()
-        self._search_flow.invalidate_filter()
+        self._apply_filters()
+
+    def _apply_filters(self):
+        """Filtro, búsqueda u orden: se ocultan o reordenan las tarjetas que ya existen."""
+        if self._mine_flow is None:
+            return
+        self._mine_flow.invalidate_filter()
         self._update_no_match()
 
     def _update_no_match(self):
         q = _fold(self._search_text)
-        any_match = False
-        child = self._search_flow.get_first_child()
-        while child is not None:
-            any_match = any_match or q in child.get_name()
-            child = child.get_next_sibling()
+        any_match = any(self._visible(c) for c in self._cards.values() if c.get_name() in self._mine)
         self._no_match.set_label(_("Ningún juego coincide con «{0}».").format(self._search_text))
         self._no_match.set_visible(bool(q) and not any_match)
 
@@ -319,21 +410,19 @@ class MainWindow(Adw.ApplicationWindow):
         if self.ctl.cfg.settings.library_sort == key:
             return
         self.ctl.cfg.settings.library_sort = key
-        self._set_filter(self.ctl.cfg.settings.library_filter, force=True)
+        self.ctl.save()
+        if self._mine_flow is not None:
+            self._mine_flow.invalidate_sort()
 
-    def _set_filter(self, key: str, force: bool = False):
-        if self.ctl.cfg.settings.library_filter == key and not force:
+    def _set_filter(self, key: str):
+        if self.ctl.cfg.settings.library_filter == key:
             return
         self.ctl.cfg.settings.library_filter = key
         self.ctl.save()
-        adj = self.library_box.get_ancestor(Gtk.ScrolledWindow).get_vadjustment()
-        pos = adj.get_value()
-
-        def rebuild():                       # fuera del manejador del botón, sin saltar arriba
-            self.rebuild_library()
-            GLib.idle_add(lambda: (adj.set_value(min(pos, adj.get_upper() - adj.get_page_size())), False)[1])
-            return False
-        GLib.idle_add(rebuild)
+        chip = getattr(self, "_chips", {}).get(key)
+        if chip is not None and not chip.get_active():
+            chip.set_active(True)                    # p. ej. si el filtro se cambia sin pulsar la pastilla
+        self._apply_filters()
 
     def _hero_box(self) -> tuple[Gtk.Box, Gtk.Box]:
         """(banner, fila superior). En estrecho los botones van en una segunda fila."""
@@ -351,7 +440,7 @@ class MainWindow(Adw.ApplicationWindow):
                 f".cover.{cls} {{ background-image: radial-gradient(circle at 50% 38%, "
                 f"alpha({color}, 0.55), transparent 62%), linear-gradient(160deg, "
                 f"color-mix(in srgb, {color} 35%, #10131c), #0b0e15); }}")
-            self._tint_css.load_from_string("\n".join(self._tints.values()))
+            self._css_dirty = True
         return cls
 
     def _cover_class(self, image: str, color: str) -> str:
@@ -365,8 +454,15 @@ class MainWindow(Adw.ApplicationWindow):
                 f"color-mix(in srgb, {color} 35%, #10131c), #0b0e15); "
                 "background-size: contain, auto, auto; background-repeat: no-repeat; "
                 "background-position: center; }")
-            self._tint_css.load_from_string("\n".join(self._tints.values()))
+            self._css_dirty = True
         return cls
+
+    def _flush_css(self):
+        """Los estilos de portada se cargan una vez por repintado, no uno por tarjeta (eso era
+        cuadrático: cada portada nueva volvía a procesar todas las anteriores)."""
+        if self._css_dirty:
+            self._css_dirty = False
+            self._tint_css.load_from_string("\n".join(self._tints.values()))
 
     def _cover(self, g: Game) -> Gtk.Widget:
         """Portada: la imagen elegida (portada o icono) o la del juego, siempre en el hueco
@@ -375,14 +471,19 @@ class MainWindow(Adw.ApplicationWindow):
         if g.cover and Path(g.cover).exists():
             # Portada entera (sin recorte ni zoom) de borde a borde: fondo CSS con «contain»,
             # que no cambia el tamaño de la tarjeta; los huecos llevan el color de la imagen.
+            thumb = exeicon.cover_thumbnail(g.cover)         # reducida y en caché
             try:
-                color = exeicon.dominant_color(Path(g.cover))
+                color = exeicon.dominant_color(thumb)
             except OSError:
                 color = "#2a3350"
-            cover.add_css_class(self._cover_class(g.cover, color))
+            cover.add_css_class(self._cover_class(str(thumb), color))
             cover.set_child(Gtk.Box())
             return cover
         icon = self.ctl.game_icon(g)
+        if icon is None:
+            self._iconless.add(g.id)                   # se extrae en segundo plano
+        else:
+            self._iconless.discard(g.id)
         if icon and icon[0]:
             png, color = icon
             cover.add_css_class(self._tint_class(color))

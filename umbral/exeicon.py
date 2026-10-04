@@ -198,8 +198,56 @@ def best_icon(exe: str, kind: str) -> Path | None:
     return best
 
 
+THUMB_DIR = ICON_CACHE.parent / "thumbs"
+_colors: dict[tuple, str] = {}
+
+
+def _stamp(p: Path) -> tuple:
+    st = p.stat()
+    return (str(p), st.st_mtime_ns, st.st_size)
+
+
+def cover_thumbnail(image: str, w: int = 552, h: int = 380) -> Path:
+    """Portada reducida al doble del hueco de la tarjeta (nítida en pantallas HiDPI) y guardada en
+    caché: así no se carga entera (p. ej. 920 px) en cada tarjeta. Si falla, la original."""
+    p = Path(image)
+    try:
+        key = hashlib.sha1(repr((*_stamp(p), w, h)).encode()).hexdigest()[:16]
+    except OSError:
+        return p
+    out = THUMB_DIR / f"{key}.png"
+    if out.exists():
+        return out
+    try:
+        from PIL import Image
+        img = Image.open(p)
+        img.thumbnail((w, h))
+        THUMB_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp")
+        img.convert("RGBA").save(tmp, "PNG")
+        tmp.replace(out)
+        return out
+    except Exception as e:  # imagen rara: se usa tal cual
+        log.warning("No se pudo reducir la portada %s: %s", p.name, e)
+        return p
+
+
 def dominant_color(png: Path) -> str:
-    """Color medio de los píxeles opacos y saturados, para teñir la portada."""
+    """Color medio de los píxeles opacos y saturados, para teñir la portada (se recuerda mientras
+    el archivo no cambie: antes se recalculaba en cada repintado de la biblioteca)."""
+    try:
+        key = _stamp(Path(png))
+    except OSError:
+        key = None
+    if key in _colors:
+        return _colors[key]
+    color = _dominant_color(Path(png))
+    if key is not None:
+        _colors[key] = color
+    return color
+
+
+def _dominant_color(png: Path) -> str:
     from PIL import Image
     img = Image.open(png).convert("RGBA").resize((32, 32))
     px = [(r, g, b) for r, g, b, a in img.getdata() if a > 200 and max(r, g, b) - min(r, g, b) > 40]

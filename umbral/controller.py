@@ -818,7 +818,7 @@ class Controller:
             self._add_played(key, time.time())
             del self._sessions[key]
             self.save()
-            self.emit("library")
+            self.emit("played", [key])       # solo cambia su tarjeta (tiempo y «hoy»)
 
     def _tick_playtime(self) -> bool:
         """Cada minuto se suma lo jugado: nada se pierde si Umbral se cierra de golpe."""
@@ -828,7 +828,7 @@ class Controller:
                 self._add_played(key, now)
                 self._sessions[key] = now
             self.save()
-            self.emit("library")
+            self.emit("played", list(self._sessions))
         return True
 
     def flush_playtime(self) -> None:
