@@ -140,3 +140,20 @@ def hyprland_float_rule(app_id: str, width: int, height: int) -> tuple[bool, str
         return False, str(e)
     out = (r.stdout + r.stderr).strip()
     return r.returncode == 0 and out == "ok", out
+
+
+# ---------------------------------------------------------------- Crisol (gestor de mods)
+
+def crisol_bin() -> str | None:
+    """Crisol (github.com/madkyp/crisol-app), si está instalado."""
+    return shutil.which("crisol")
+
+
+def open_in_crisol(game_id: str) -> bool:
+    """Abre la página del juego en Crisol para gestionar sus mods."""
+    exe = crisol_bin()
+    if not exe:
+        return False
+    subprocess.Popen([exe, "--game", f"umbral:{game_id}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    return True

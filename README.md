@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.14.1](https://img.shields.io/badge/version-0.14.1-informational)
+![Version 0.14.2](https://img.shields.io/badge/version-0.14.2-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -226,6 +226,8 @@ Umbral's own options and your environment variables always win over what Control
 ---
 
 ## 🔌 Integration
+
+> 🧩 **Mods:** with **[Crisol](https://github.com/madkyp/crisol-app)** installed (the author's mod manager), each game's ⋯ menu gets **Mods (Crisol)**, which opens that game in Crisol (`crisol --game umbral:<id>`). Mods Crisol applies are already in the game folder, so **Play** in Umbral starts the game with them.
 
 Other apps (e.g. [Control Deck](https://github.com/madkyp/control-deck)) can follow and control Umbral's games:
 

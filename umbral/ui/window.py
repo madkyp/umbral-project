@@ -633,6 +633,8 @@ class MainWindow(Adw.ApplicationWindow):
         actions.append(gear)
         m = Gio.Menu()
         m.append(_("Abrir carpeta del juego"), f"win.game-folder::{g.id}")
+        if g.kind not in engines.NATIVE_KINDS and g.kind != "battlenet" and integration.crisol_bin():
+            m.append(_("Mods (Crisol)"), f"win.crisol::{g.id}")
         m.append(_('Ver registro'), f"win.game-log::{g.id}")
         m.append(_('Crear acceso directo'), f"win.shortcut::{g.id}")
         m.append(_('Cambiar imagen de portada…'), f"win.cover-pick::{g.id}")
@@ -770,6 +772,7 @@ class MainWindow(Adw.ApplicationWindow):
         act("game-remove", self._remove_game, True)
         act("game-move", self._move_game, True)
         act("game-folder", self._open_game_folder, True)
+        act("crisol", integration.open_in_crisol, True)
         act("wtf-backup", lambda gid: self.ctl.backup_wtf(gid), True)
         act("wtf-restore", self._restore_wtf, True)
         act("refresh", lambda _a: self._refresh())
