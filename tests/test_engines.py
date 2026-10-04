@@ -118,6 +118,42 @@ class TestDiscs(unittest.TestCase):
         self.assertEqual(engines.detect(self.write("EBOOT.PBP", pbp(b"ME")))[0].system, "ps1")
         self.assertEqual(engines.detect(self.write("game.pbp", pbp(b"UG")))[0].system, "psp")
 
+    def test_sega_discs_by_header(self):
+        def disc(sig: bytes) -> bytes:
+            iso = bytearray(make_iso({"X.BIN": b"x"}))
+            iso[:len(sig)] = sig                       # primer sector de datos
+            return bytes(iso)
+        self.assertEqual(engines.detect(self.write("Nights.iso", disc(b"SEGA SEGASATURN ")))[0].system, "saturn")
+        self.assertEqual(engines.detect(self.write("Sonic CD.iso", disc(b"SEGADISCSYSTEM  ")))[0].system, "segacd")
+        # .bin en bruto (2352 bytes por sector, modo 1) detrás de un .cue
+        raw = bytearray(b"\x00" + b"\xff" * 10 + b"\x00" + b"\x00\x02\x00\x01" + b"SEGA SEGASATURN " + b"\x00" * 2320)
+        self.write("Panzer.bin", bytes(raw))
+        cue = self.write("Panzer.cue", b'FILE "Panzer.bin" BINARY\n  TRACK 01 MODE1/2352\n')
+        self.assertEqual(engines.detect(cue)[0].system, "saturn")
+
+    def test_dreamcast_and_ambiguous_chd(self):
+        def chd(tag: bytes) -> bytes:
+            head = bytearray(124 + 16)
+            head[:8] = b"MComprHD"
+            struct.pack_into(">I", head, 12, 5)
+            struct.pack_into(">Q", head, 48, 124)
+            head[124:128] = tag
+            return bytes(head)
+        self.assertEqual(engines.detect(self.write("Shenmue.chd", chd(b"CHGD")))[0].system, "dc")
+        self.assertEqual([c.system for c in engines.detect(self.write("Juego.chd", chd(b"CHT2")))],
+                         ["ps1", "saturn", "segacd"])            # se puede elegir
+        self.write("track01.bin", b"1")
+        self.write("track 03.raw", b"3")
+        gdi = self.write("Sonic Adventure.gdi", b'3\n1 0 4 2352 track01.bin 0\n3 45000 4 2352 "track 03.raw" 0\n')
+        self.assertEqual(engines.detect(gdi)[0].system, "dc")
+        self.assertEqual(sorted(f.name for f in engines.rom_files(gdi)),
+                         ["Sonic Adventure.gdi", "track 03.raw", "track01.bin"])
+
+    def test_tanda2_extensions_and_arcade_stays_put(self):
+        for name, system in (("mslug.zip", "arcade"), ("Pitfall.a52", "a5200"), ("Star Raiders.atr", "a800")):
+            self.assertEqual(engines.detect(self.write(name, b"x"))[0].system, system, name)
+        self.assertTrue(engines.is_organized(str(self.dir / "mslug.zip"), self.dir / "games", "arcade"))
+
     def test_tanda1_extensions(self):
         for name, system in (("Mario.nes", "nes"), ("Zelda.sfc", "snes"), ("Mario 64.z64", "n64"),
                              ("Pokemon Perla.nds", "ds"), ("Zelda.3ds", "3ds"), ("Sonic.md", "md"),
@@ -197,10 +233,10 @@ class TestCommands(unittest.TestCase):
 
     def test_emulator_fullscreen_goes_before_the_rom(self):
         for system, base, expect in (
-                ("ps2", ["pcsx2-qt"], ["pcsx2-qt", "-batch", "-fullscreen", "--", str(self.rom)]),
+                ("ps2", ["pcsx2-qt"], ["pcsx2-qt", "-fullscreen", "-batch", "--", str(self.rom)]),
                 ("gc", ["flatpak", "run", "org.DolphinEmu.dolphin-emu"],
-                 ["flatpak", "run", f"--filesystem={self.rom.parent}", "org.DolphinEmu.dolphin-emu", "-b", "-C",
-                  "Dolphin.Display.Fullscreen=True", "-e", str(self.rom)]),
+                 ["flatpak", "run", f"--filesystem={self.rom.parent}", "org.DolphinEmu.dolphin-emu", "-C",
+                  "Dolphin.Display.Fullscreen=True", "-b", "-e", str(self.rom)]),
                 ("gba", ["mgba-qt"], ["mgba-qt", "-f", str(self.rom)])):
             g = Game("a", "x", "emulator", "", str(self.rom), system=system)
             with mock.patch.object(engines, "find_emulator", return_value=base):
@@ -220,7 +256,31 @@ class TestCommands(unittest.TestCase):
         g = Game("a", "x", "emulator", "", str(self.rom), system="n64")
         with mock.patch.object(engines, "find_emulator", side_effect=lambda k: ["/usr/bin/ares"] if k == "ares" else None):
             self.assertEqual(engines.command(g, True)[0],
-                             ["/usr/bin/ares", "--system", "Nintendo 64", "--fullscreen", str(self.rom)])
+                             ["/usr/bin/ares", "--fullscreen", "--system", "Nintendo 64", str(self.rom)])
+
+    def test_tanda2_commands(self):
+        only = lambda k: (lambda key: [f"/usr/bin/{key}"] if key == k else None)  # noqa: E731
+        cases = (
+            ("arcade", "mslug.zip", "mame", None, ["/usr/bin/mame", "-rompath", "DIR;BIOS", "mslug"]),
+            ("arcade", "mslug.zip", "mame", False, ["/usr/bin/mame", "-window", "-rompath", "DIR;BIOS", "mslug"]),
+            ("a5200", "Pitfall.a52", "mame", True, ["/usr/bin/mame", "-rompath", "BIOS", "a5200", "-cart", "ROM"]),
+            ("a800", "Star Raiders.atr", "mame", True,
+             ["/usr/bin/mame", "-rompath", "BIOS", "a800", "-flop1", "ROM"]),
+            ("dc", "Sonic Adventure.gdi", "flycast", True,
+             ["/usr/bin/flycast", "-config", "window:fullscreen=yes", "ROM"]),
+            ("saturn", "Nights.cue", "ymir", True, ["/usr/bin/ymir", "-f", "ROM"]),
+            ("segacd", "Sonic CD.cue", "ares", True, ["/usr/bin/ares", "--fullscreen", "--system", "Mega CD", "ROM"]),
+        )
+        for system, name, emu, fs, expect in cases:
+            rom = Path(self.tmp.name) / name
+            rom.write_bytes(b"x")
+            g = Game("a", "x", "emulator", "", str(rom), system=system)
+            root = Path(self.tmp.name) / "games"
+            with mock.patch.object(engines, "find_emulator", side_effect=only(emu)):
+                argv = engines.command(g, fs, root)[0]
+            sub = {"ROM": str(rom), "DIR;BIOS": f"{rom.parent};{root / 'BIOS'}", "BIOS": str(root / "BIOS")}
+            want = [sub.get(a, a) for a in expect]
+            self.assertEqual(argv, want, name)
 
     def test_first_installed_emulator_wins(self):
         with mock.patch.object(engines, "find_emulator", side_effect=lambda k: ["blastem"] if k == "blastem" else None):
@@ -239,6 +299,72 @@ class TestCommands(unittest.TestCase):
         self.assertIn("-fullscreen", plan.argv)                 # pantalla completa por defecto
         self.assertEqual(plan.env, {"FOO": "1"})                # sin WINEPREFIX ni Proton
         self.assertEqual(plan.runner.kind, "native")
+
+
+class TestFlatpakPaths(unittest.TestCase):
+    def test_colon_never_reaches_flatpak(self):
+        self.assertEqual(engines.folder_name("Pantera Rosa: Mision Peligrosa"), "Pantera Rosa - Mision Peligrosa")
+        self.assertEqual(engines.folder_name("AC/DC: Live"), "AC-DC - Live")
+        # carpeta antigua con «:»: permiso para la carpeta superior que no lo tiene
+        self.assertEqual(engines.flatpak_access(Path("/g/ScummVM/Pantera Rosa: Mision Peligrosa")),
+                         "--filesystem=/g/ScummVM")
+        self.assertEqual(engines.flatpak_access(Path("/g/GBA/Pokemon"), "ro"), "--filesystem=/g/GBA/Pokemon:ro")
+
+    def test_scummvm_flatpak_with_colon_in_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d) / "ScummVM" / "Pantera Rosa: Mision Peligrosa"
+            folder.mkdir(parents=True)
+            g = Game("a", "Pantera", "scummvm", "", str(folder), target="pink:peril")
+            with mock.patch.object(engines, "scummvm_binary", return_value=["flatpak", "run", "org.scummvm.ScummVM"]):
+                argv, _cwd = engines.command(g, None)
+        self.assertEqual(argv[2], f"--filesystem={Path(d) / 'ScummVM'}")
+        self.assertEqual(argv[-1], "pink:peril")
+
+
+class TestRomFolder(unittest.TestCase):
+    def test_scan_counts_each_game_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "GBA").mkdir()
+            (root / "GBA" / "Pokemon Zafiro (Spain).gba").write_bytes(b"x")
+            (root / "GBA" / "Golden Sun.gba").write_bytes(b"x")
+            (root / "PS1").mkdir()
+            (root / "PS1" / "Crash.bin").write_bytes(make_iso({"SYSTEM.CNF": b"BOOT = cdrom:\\SCES_009.67;1"}, raw=True))
+            (root / "PS1" / "Crash.cue").write_bytes(b'FILE "Crash.bin" BINARY\n')
+            (root / "zipped.zip").write_bytes(b"PK")                       # se salta
+            (root / "Juego de PC.iso").write_bytes(make_iso({"SETUP.EXE": b"MZ"}))   # CD de PC: se salta
+            found = engines.scan_roms(root)
+            self.assertEqual(sorted((c.system, c.title) for c in found),
+                             [("gba", "Golden Sun"), ("gba", "Pokemon Zafiro"), ("ps1", "Crash")])
+            self.assertEqual(engines.summary(found), "GBA 2 · PS1 1")
+            with mock.patch.object(engines, "scummvm_detect", return_value=[]):
+                c = engines.detect(root)
+            self.assertEqual(c[0].engine, "bulk")
+            self.assertEqual(len(c[0].extra["roms"]), 3)
+
+
+class TestBios(unittest.TestCase):
+    def test_finds_bios_where_each_emulator_looks(self):
+        with tempfile.TemporaryDirectory() as d:
+            home, games = Path(d), Path(d) / "games"
+            with mock.patch.object(engines, "HOME", home), mock.patch.dict("os.environ", {}, clear=True):
+                ps1 = next(c for c in engines.BIOS_CHECKS if c.emulator == "duckstation")
+                ok, name, folder = engines.bios_status(ps1, games)
+                self.assertEqual((ok, folder), (False, home / ".local/share/duckstation/bios"))
+                folder.mkdir(parents=True)
+                (folder / "scph5501.bin").write_bytes(b"x")
+                self.assertEqual(engines.bios_status(ps1, games)[:2], (True, "scph5501.bin"))
+                # Mednafen solo acepta sus nombres concretos
+                med = next(c for c in engines.BIOS_CHECKS if c.emulator == "mednafen" and c.system == "saturn")
+                fw = home / ".mednafen/firmware"
+                fw.mkdir(parents=True)
+                (fw / "otra.bin").write_bytes(b"x")
+                self.assertFalse(engines.bios_status(med, games)[0])
+                (fw / "sega_101.bin").write_bytes(b"x")
+                self.assertTrue(engines.bios_status(med, games)[0])
+                # MAME: la carpeta de BIOS de Umbral
+                st = engines.bios_for("a5200", "mame", games)
+                self.assertEqual((st[0], st[2]), (False, games / "BIOS"))
 
 
 class TestNoWineserverWithoutPrefix(unittest.TestCase):

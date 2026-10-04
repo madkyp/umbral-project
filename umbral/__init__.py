@@ -1,3 +1,3 @@
 APP_ID = "dev.madky.Umbral"
 APP_NAME = "Umbral"
-VERSION = "0.13.0"
+VERSION = "0.14.0"

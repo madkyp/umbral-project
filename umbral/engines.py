@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import re
 import shutil
 import struct
@@ -38,6 +39,7 @@ class Emulator:
     flatpak: str = ""                   # id en Flathub (Umbral lo instala para tu usuario, sin sudo)
     args: tuple[str, ...] = ("{rom}",)  # {rom} = la ROM o imagen · {ares} = nombre del sistema en ares
     fullscreen: tuple[str, ...] = ()    # argumentos para pantalla completa (comprobados en su código)
+    windowed: tuple[str, ...] = ()      # para ventana, si el emulador arranca en pantalla completa (MAME)
     package: str = ""                   # paquete de Arch si no hay Flatpak
     appimage: str = ""                  # patrón de su AppImage (en ~/Applications, ~/AppImages, ~/.local/bin)
     appimage_url: str = ""              # descarga oficial de la AppImage
@@ -63,6 +65,11 @@ EMULATORS = {
     "stella": Emulator("Stella", ("stella",), fullscreen=("-fullscreen", "1"), package="stella"),
     "mednafen": Emulator("Mednafen", ("mednafen",), fullscreen=("-video.fs", "1"), package="mednafen"),
     "mupen64plus": Emulator("Mupen64Plus", ("mupen64plus",), fullscreen=("--fullscreen",), package="mupen64plus"),
+    "flycast": Emulator("Flycast", ("flycast",), "org.flycast.Flycast", fullscreen=("-config", "window:fullscreen=yes"),
+                        package="flycast"),
+    "ymir": Emulator("Ymir", ("ymir", "ymir-sdl3"), "io.github.strikerx3.ymir", fullscreen=("-f",)),
+    # MAME arranca a pantalla completa; «-window» para ventana. Sus argumentos dependen del sistema.
+    "mame": Emulator("MAME", ("mame",), "org.mamedev.MAME", windowed=("-window",), package="mame"),
     "scummvm": Emulator("ScummVM", ("scummvm",), "org.scummvm.ScummVM", package="scummvm"),
 }
 
@@ -75,6 +82,8 @@ class System:
     short: str                     # etiqueta de la tarjeta y nombre de su carpeta (Juegos/GBA/…)
     emulators: tuple[str, ...]     # por preferencia: se usa el primero instalado
     ares: str = ""                 # nombre del sistema en ares (--system)
+    args: dict = field(default_factory=dict)   # argumentos propios por emulador (sustituyen a los suyos)
+    bios: str = ""                 # aviso: BIOS que necesita (no se incluye); ver BIOS_CHECKS
 
 
 SYSTEMS = {
@@ -95,7 +104,21 @@ SYSTEMS = {
     "gg": System("Game Gear", "Game Gear", ("ares", "mednafen"), "Game Gear"),
     "pce": System("PC Engine / TurboGrafx-16", "PC Engine", ("ares", "mednafen"), "PC Engine"),
     "a2600": System("Atari 2600", "Atari 2600", ("stella",)),
+    "segacd": System("Mega CD / Sega CD", "Mega CD", ("ares",), "Mega CD",
+                     bios=_("Necesita la BIOS del Mega CD en la configuración de ares.")),
+    "saturn": System("Sega Saturn", "Saturn", ("ymir", "mednafen"),
+                     bios=_("Necesita la BIOS de Saturn (IPL) en la configuración de Ymir o de Mednafen.")),
+    "dc": System("Dreamcast", "Dreamcast", ("flycast",)),
+    "arcade": System("Recreativas / Neo Geo", "Arcade", ("mame",),
+                     args={"mame": ("-rompath", "{dir};{bios}", "{stem}")},
+                     bios=_("ROM de MAME con su nombre corto (p. ej. mslug.zip); los de Neo Geo necesitan "
+                            "neogeo.zip en la misma carpeta o en la de BIOS de Umbral.")),
+    "a5200": System("Atari 5200", "Atari 5200", ("mame",), args={"mame": ("-rompath", "{bios}", "a5200", "-cart", "{rom}")},
+                    bios=_("Necesita la BIOS a5200.zip en la carpeta de BIOS de Umbral (Sistema → BIOS).")),
+    "a800": System("Atari 800", "Atari 800", ("mame",), args={"mame": ("-rompath", "{bios}", "a800", "{a800}", "{rom}")},
+                   bios=_("Necesita la BIOS a800.zip en la carpeta de BIOS de Umbral (Sistema → BIOS).")),
 }
+A800_MEDIA = {".atr": "-flop1", ".car": "-cart1", ".rom": "-cart1"}
 ROM_EXTS = {".gba": "gba", ".gb": "gb", ".gbc": "gb", ".m3u": "ps1",
             ".nes": "nes", ".fds": "nes", ".unf": "nes", ".sfc": "snes", ".smc": "snes",
             ".n64": "n64", ".z64": "n64", ".v64": "n64", ".nds": "ds",
@@ -103,7 +126,10 @@ ROM_EXTS = {".gba": "gba", ".gb": "gb", ".gbc": "gb", ".m3u": "ps1",
             ".gcm": "gc", ".gcz": "gc", ".rvz": "gc", ".wia": "gc", ".wbfs": "wii",
             ".pbp": "psp", ".cso": "psp",
             ".md": "md", ".gen": "md", ".smd": "md", ".sms": "sms", ".gg": "gg",
-            ".pce": "pce", ".sgx": "pce", ".a26": "a2600"}
+            ".pce": "pce", ".sgx": "pce", ".a26": "a2600",
+            ".gdi": "dc", ".cdi": "dc", ".a52": "a5200", ".atr": "a800", ".car": "a800",
+            ".zip": "arcade", ".7z": "arcade"}
+NO_ORGANIZE = {"arcade"}       # MAME busca la BIOS (neogeo.zip…) junto a la ROM: no se mueve sola
 
 
 @dataclass
@@ -128,6 +154,9 @@ class Candidate:
             return _("Máquina virtual (QEMU)")
         if self.engine == "extract":
             return _("Disco de PC: extraer e identificar")
+        if self.engine == "bulk":
+            n = len(self.extra.get("roms", []))
+            return _("Varias ROMs: {0} juegos").format(n)
         return _("Wine / Proton")
 
 
@@ -204,6 +233,21 @@ def install_hint(key: str) -> str:
 def systems_of(key: str) -> list[str]:
     """Sistemas que abre un emulador (para la lista de Sistema → Emuladores)."""
     return [s.short for s in SYSTEMS.values() if key in s.emulators]
+
+
+def folder_name(name: str) -> str:
+    """Nombre de carpeta seguro: sin «/» y sin «:», que Flatpak toma como opción
+    (--filesystem=…/Pantera Rosa: Mision Peligrosa → «Unexpected filesystem suffix»)."""
+    clean = re.sub(r"\s*:\s*", " - ", name.replace("/", "-")).strip(" -")
+    return re.sub(r"\s{2,}", " ", clean)
+
+
+def flatpak_access(path: Path, mode: str = "") -> str:
+    """--filesystem=… para la carpeta; si su ruta tiene «:», la carpeta superior que no lo tenga."""
+    p = Path(path)
+    while ":" in str(p) and p.parent != p:
+        p = p.parent
+    return f"--filesystem={p}{':' + mode if mode else ''}"
 
 
 def refresh() -> None:
@@ -308,11 +352,125 @@ def uninstall(key: str) -> None:
     refresh()
 
 
+# ---------------------------------------------------------------- BIOS
+HOME = Path.home()
+
+
+def _xdg(var: str, default: str) -> Path:
+    v = os.environ.get(var, "")
+    return Path(v) if v.startswith("/") else HOME / default
+
+
+def bios_root(games_root: Path) -> Path:
+    """Carpeta de BIOS de Umbral (MAME la recibe con -rompath)."""
+    return games_root / "BIOS"
+
+
+def _ares_firmware(system: str) -> list[Path]:
+    """Rutas de firmware elegidas en ares (settings.bml: <Sistema>/Firmware/BIOS.<región>)."""
+    out = []
+    for d in (_xdg("XDG_DATA_HOME", ".local/share") / "ares", _xdg("XDG_CONFIG_HOME", ".config") / "ares",
+              HOME / ".var/app/dev.ares.ares/data/ares", HOME / ".var/app/dev.ares.ares/config/ares"):
+        try:
+            text = (d / "settings.bml").read_text(errors="replace")
+        except OSError:
+            continue
+        block = False
+        for line in text.splitlines():
+            if line and not line[0].isspace():
+                block = line.strip().replace(" ", "") == system.replace(" ", "")
+            elif block:
+                m = re.match(r"\s*BIOS\.\w+:\s*(.+)$", line)
+                if m and m.group(1).strip():
+                    out.append(Path(m.group(1).strip()))
+    return out
+
+
+@dataclass(frozen=True)
+class BiosCheck:
+    system: str
+    emulator: str
+    folders: tuple            # funciones → carpetas donde la busca el emulador (la primera, la recomendada)
+    names: tuple = ()         # archivos concretos (vacío = cualquier .bin/.rom de la carpeta)
+    note: str = ""
+
+
+def _ds():
+    """DuckStation: $XDG_CONFIG_HOME/duckstation si está definida; si no, ~/.local/share/duckstation."""
+    xdg = os.environ.get("XDG_CONFIG_HOME", "")
+    return [Path(xdg) / "duckstation/bios" if xdg.startswith("/") else HOME / ".local/share/duckstation/bios"]
+
+
+def _pcsx2():
+    return [_xdg("XDG_CONFIG_HOME", ".config") / "PCSX2/bios", HOME / ".var/app/net.pcsx2.PCSX2/config/PCSX2/bios"]
+
+
+def _ymir():
+    data = _xdg("XDG_DATA_HOME", ".local/share")
+    found = [*data.glob("*/Ymir/roms/ipl"), *(HOME / ".var/app/io.github.strikerx3.ymir/data").glob("*/Ymir/roms/ipl")]
+    return found or [data / "StrikerX3/Ymir/roms/ipl"]
+
+
+def _mednafen():
+    return [Path(os.environ.get("MEDNAFEN_HOME", HOME / ".mednafen")) / "firmware"]
+
+
+BIOS_CHECKS = (
+    BiosCheck("ps1", "duckstation", (_ds,)),
+    BiosCheck("ps1", "mednafen", (_mednafen,), ("scph5500.bin", "scph5501.bin", "scph5502.bin")),
+    BiosCheck("ps2", "pcsx2", (_pcsx2,)),
+    BiosCheck("saturn", "ymir", (_ymir,)),
+    BiosCheck("saturn", "mednafen", (_mednafen,), ("sega_101.bin", "mpr-17933.bin")),
+    BiosCheck("segacd", "ares", (), note=_("Elígela en ares → Settings → Firmware → Mega CD.")),
+    BiosCheck("arcade", "mame", ("bios",), ("neogeo.zip",), note=_("Solo para Neo Geo.")),
+    BiosCheck("a5200", "mame", ("bios",), ("a5200.zip",)),
+    BiosCheck("a800", "mame", ("bios",), ("a800.zip",)),
+)
+BIOS_FILE = re.compile(r"\.(bin|rom|zip|img)$", re.I)
+
+
+def bios_status(check: BiosCheck, games_root: Path) -> tuple[bool, str, Path | None]:
+    """(encontrada, archivo encontrado o «», carpeta donde ponerla)."""
+    if check.system == "segacd":
+        found = [f for f in _ares_firmware("Mega CD") if f.is_file()]
+        return bool(found), found[0].name if found else "", None
+    folders: list[Path] = []
+    for f in check.folders:
+        folders += [bios_root(games_root)] if f == "bios" else f()
+    for d in folders:
+        try:
+            files = [x for x in d.iterdir() if x.is_file()]
+        except OSError:
+            continue
+        hits = [x for x in files if (x.name.lower() in check.names if check.names else BIOS_FILE.search(x.name))]
+        if hits:
+            return True, sorted(x.name for x in hits)[0], d
+    return False, "", folders[0] if folders else None
+
+
+def bios_for(system: str, emulator: str, games_root: Path) -> tuple[bool, str, Path | None] | None:
+    """Estado de la BIOS de ese sistema con ese emulador; None si no necesita (o no se puede saber)."""
+    for c in BIOS_CHECKS:
+        if c.system == system and c.emulator == emulator:
+            return bios_status(c, games_root)
+    return None
+
+
 # ---------------------------------------------------------------- ROMs por carpetas
 def rom_files(rom: Path) -> list[Path]:
     """La ROM y los archivos que la acompañan (.bin de un .cue, discos de un .m3u)."""
     out = [rom]
     ext = rom.suffix.lower()
+    if ext == ".gdi":
+        try:
+            for line in rom.read_text(errors="replace").splitlines()[1:]:
+                m = re.match(r'\s*\d+\s+\d+\s+\d+\s+\d+\s+("([^"]+)"|(\S+))', line)
+                f = rom.parent / (m.group(2) or m.group(3)) if m else None
+                if f and f.is_file() and f not in out:
+                    out.append(f)
+        except OSError:
+            pass
+        return out
     if ext in (".cue", ".m3u"):
         try:
             lines = rom.read_text(errors="replace").splitlines()
@@ -333,7 +491,7 @@ def rom_files(rom: Path) -> list[Path]:
 def rom_folder(games_root: Path, system: str, name: str) -> Path:
     """Juegos/<sistema>/<nombre del juego> (p. ej. games/GBA/Pokémon Zafiro), sin pisar otra."""
     base = games_root / SYSTEMS[system].short
-    clean = name.replace("/", "-").strip() or "ROM"
+    clean = folder_name(name) or "ROM"
     dest, n = base / clean, 2
     while dest.exists():
         dest, n = base / f"{clean} ({n})", n + 1
@@ -341,6 +499,8 @@ def rom_folder(games_root: Path, system: str, name: str) -> Path:
 
 
 def is_organized(rom: str, games_root: Path, system: str) -> bool:
+    if system in NO_ORGANIZE:
+        return True
     try:
         return Path(rom).resolve().is_relative_to((games_root / SYSTEMS[system].short).resolve())
     except (OSError, ValueError, KeyError):
@@ -368,7 +528,7 @@ def scummvm_detect(folder: Path) -> list[tuple[str, str]]:
         return []
     try:
         if cmd[0] == "flatpak":
-            cmd = [*cmd[:2], f"--filesystem={folder}:ro", *cmd[2:]]
+            cmd = [*cmd[:2], flatpak_access(folder, "ro"), *cmd[2:]]
         out = subprocess.run([*cmd, "--detect", f"--path={folder}"], capture_output=True, text=True,
                              timeout=30, errors="replace").stdout
     except (OSError, subprocess.SubprocessError) as e:
@@ -484,7 +644,9 @@ def _chd_system(path: Path) -> str:
             tag = f.read(4)
     except (OSError, struct.error):
         return ""
-    if tag in (b"CHT2", b"CHTR", b"CHCD", b"CHGD"):
+    if tag == b"CHGD":                      # GD-ROM
+        return "dc"
+    if tag in (b"CHT2", b"CHTR", b"CHCD"):
         return "ps1"
     if tag == b"DVD ":
         return "ps2"
@@ -502,6 +664,24 @@ def _cue_data(cue: Path) -> Path | None:
     except OSError:
         pass
     return None
+
+
+SEGA_HEADERS = {b"SEGADISCSYSTEM": "segacd", b"SEGA SEGASATURN": "saturn", b"SEGA SEGAKATANA": "dc"}
+
+
+def _sega(path: Path) -> str:
+    """Mega CD, Saturn y Dreamcast: la firma del primer sector de datos."""
+    try:
+        d = _Disc(path)
+    except OSError:
+        return ""
+    try:
+        head = d.sector(0)[:16]
+    except OSError:
+        head = b""
+    finally:
+        d.close()
+    return next((sysid for sig, sysid in SEGA_HEADERS.items() if head.startswith(sig)), "")
 
 
 def _psp_iso(path: Path) -> bool:
@@ -549,13 +729,13 @@ def disc_system(path: Path) -> str:
         return _chd_system(path)
     if ext == ".cue":
         data = _cue_data(path)
-        return _playstation(data) if data else ""
+        return (_sega(data) or _playstation(data)) if data else ""
     try:
         with open(path, "rb") as f:
             head = f.read(0x20)
     except OSError:
         return ""
-    return _nintendo(head) or _playstation(path) or ("psp" if _psp_iso(path) else "")
+    return _nintendo(head) or _sega(path) or _playstation(path) or ("psp" if _psp_iso(path) else "")
 
 
 def clean_title(name: str) -> str:
@@ -575,6 +755,40 @@ def _scummvm_candidates(folder: Path) -> list[Candidate]:
             for gid, desc in scummvm_detect(folder)]
 
 
+BULK_SKIP = {".zip", ".7z"}     # en una carpeta de ROMs suelen ser ROMs comprimidas, no recreativas
+
+
+def scan_roms(folder: Path, limit: int = 5000) -> list[Candidate]:
+    """Todas las ROMs e imágenes de consola de una carpeta (y subcarpetas), una por juego:
+    las pistas de un .cue/.gdi/.m3u no cuentan aparte. Los CD de PC (.iso sin consola) se saltan."""
+    files = sorted((x for x in folder.rglob("*") if x.is_file()
+                    and x.suffix.lower() not in BULK_SKIP
+                    and (x.suffix.lower() in ROM_EXTS or x.suffix.lower() in DISC_EXTS)), key=lambda x: str(x).lower())
+    companions: set[Path] = set()
+    for f in files:
+        if f.suffix.lower() in (".cue", ".gdi", ".m3u"):
+            companions.update(x.resolve() for x in rom_files(f)[1:])
+    # un .m3u agrupa discos: los .cue que lista ya no cuentan aparte
+    out: list[Candidate] = []
+    for f in files:
+        if f.resolve() in companions:
+            continue
+        found = [c for c in detect(f) if c.engine == EMULATOR]
+        if found:
+            out.append(found[0])
+            if len(out) >= limit:
+                break
+    return out
+
+
+def summary(cands: list[Candidate]) -> str:
+    """«GBA 8 · PS1 3 · SNES 1», en el orden de SYSTEMS."""
+    counts: dict[str, int] = {}
+    for c in cands:
+        counts[c.system] = counts.get(c.system, 0) + 1
+    return " · ".join(f"{SYSTEMS[k].short} {counts[k]}" for k in SYSTEMS if k in counts)
+
+
 def detect(path: str | Path) -> list[Candidate]:
     """Formas de abrir lo elegido, la mejor primero. Puede tardar (ScummVM): fuera del hilo de la UI."""
     p = Path(path)
@@ -582,6 +796,9 @@ def detect(path: str | Path) -> list[Candidate]:
     out: list[Candidate] = []
     if p.is_dir():
         out += _scummvm_candidates(p)
+        roms = [] if out else scan_roms(p)
+        if roms:
+            out.append(Candidate("bulk", str(p), folder_title(p), detail=summary(roms), extra={"roms": roms}))
         for disk in sorted(x for x in p.rglob("*") if x.suffix.lower() in VM_EXTS):
             out.append(_vm_candidate(disk, p))
         for iso in sorted(x for x in p.rglob("*") if x.suffix.lower() == ".iso"):
@@ -610,6 +827,11 @@ def detect(path: str | Path) -> list[Candidate]:
         return [Candidate(EMULATOR, str(p), clean_title(p.stem), system=sysid)]
     if ext in DISC_EXTS:
         sysid = disc_system(p)
+        if ext == ".chd" and sysid == "ps1":
+            # un .chd de CD no dice de qué consola es: PS1 es lo más habitual, pero se puede elegir
+            note = _("Un .chd de CD no indica la consola: elige la correcta si no es esta.")
+            return [Candidate(EMULATOR, str(p), clean_title(p.stem), system=x, detail=note)
+                    for x in ("ps1", "saturn", "segacd")]
         if sysid:
             return [Candidate(EMULATOR, str(p), clean_title(p.stem), system=sysid)]
         if ext == ".iso":
@@ -670,7 +892,7 @@ def disc_size(iso: Path) -> int:
 
 
 # ---------------------------------------------------------------- lanzamiento
-def command(game, fullscreen: bool | None) -> tuple[list[str], str]:
+def command(game, fullscreen: bool | None, games_root: Path | None = None) -> tuple[list[str], str]:
     """(argv, carpeta de trabajo) del juego. FileNotFoundError si falta el programa o el juego."""
     path = Path(game.exe)
     if not path.exists():
@@ -680,7 +902,7 @@ def command(game, fullscreen: bool | None) -> tuple[list[str], str]:
         if not base:
             raise FileNotFoundError(_("ScummVM no está instalado: sudo pacman -S scummvm"))
         if base[0] == "flatpak":
-            base = [*base[:2], f"--filesystem={path}", *base[2:]]
+            base = [*base[:2], flatpak_access(path), *base[2:]]
         argv = [*base, f"--path={path}"]
         if fullscreen is not None:
             argv.append("--fullscreen" if fullscreen else "--no-fullscreen")
@@ -692,13 +914,24 @@ def command(game, fullscreen: bool | None) -> tuple[list[str], str]:
         emu = EMULATORS[key]
         if not base:
             raise FileNotFoundError(_("{0} no está instalado: {1}").format(emu.name, install_hint(key)))
-        args = [a.replace("{rom}", str(path)).replace("{ares}", SYSTEMS[game.system].ares) for a in emu.args]
+        system = SYSTEMS[game.system]
+        values = {"{rom}": str(path), "{ares}": system.ares, "{dir}": str(path.parent), "{stem}": path.stem,
+                  "{bios}": str(bios_root(games_root)) if games_root else str(path.parent),
+                  "{a800}": A800_MEDIA.get(path.suffix.lower(), "-flop1")}
+        args = []
+        for a in system.args.get(key, emu.args):
+            for k, v in values.items():
+                a = a.replace(k, v)
+            args.append(a)
+        # las opciones de pantalla van delante: todos estos emuladores las aceptan antes de la ROM
         if fullscreen:
-            # las opciones van antes del «--» que separa la ROM
-            cut = args.index("--") if "--" in args else (args.index("-e") if "-e" in args else len(args) - 1)
-            args[cut:cut] = list(emu.fullscreen)
+            args = [*emu.fullscreen, *args]
+        elif fullscreen is False:
+            args = [*emu.windowed, *args]
         if base[0] == "flatpak":
             # el Flatpak solo ve tu carpeta personal si se lo permites: se le da la de la ROM
-            base = [*base[:2], f"--filesystem={path.parent}", *base[2:]]
+            extra = [flatpak_access(bios_root(games_root), "ro")] if games_root and "{bios}" in " ".join(
+                system.args.get(key, ())) else []
+            base = [*base[:2], flatpak_access(path.parent), *extra, *base[2:]]
         return [*base, *args], str(path.parent)
     raise FileNotFoundError(_("Este tipo de juego aún no se puede lanzar."))

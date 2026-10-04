@@ -75,6 +75,11 @@ window.umbral {
 }
 .card-title { font-weight: 700; font-size: 12pt; }
 
+/* Filtros de «Mis juegos y programas» */
+.filter-chip { border-radius: 999px; padding: 4px 14px; font-weight: 600; background: alpha(white, 0.06); }
+.filter-chip:hover { background: alpha(white, 0.10); }
+.filter-chip:checked { background: var(--accent-bg-color); color: var(--accent-fg-color); }
+.filter-count { font-size: 9pt; opacity: 0.65; }
 .console {
   font-family: monospace;
   font-size: 9pt;

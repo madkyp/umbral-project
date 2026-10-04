@@ -45,7 +45,7 @@ class AddGameDialog(Adw.Dialog):
         pick = Gtk.Button(label=_('Archivo…'), valign=Gtk.Align.CENTER)
         pick.connect("clicked", self._pick)
         folder = Gtk.Button(label=_('Carpeta…'), valign=Gtk.Align.CENTER, css_classes=["flat"],
-                            tooltip_text=_('Para juegos de ScummVM o packs con su propio sistema'))
+                            tooltip_text=_('Una carpeta llena de ROMs (se añaden todas) o un juego de ScummVM'))
         folder.connect("clicked", self._pick_folder)
         self.exe_row.add_suffix(folder)
         self.exe_row.add_suffix(pick)
@@ -78,7 +78,7 @@ class AddGameDialog(Adw.Dialog):
                 ("application-x-executable-symbolic", _('Juegos y programas de Windows'),
                  _('.exe para jugar · .msi o setup.exe para instalar (luego te propone añadir el juego) · .bat')),
                 ("input-gaming-symbolic", _('ROMs y discos de consola'),
-                 _('Game Boy y GBA · PS1 · PS2 · GameCube y Wii (.gba, .iso, .bin/.cue, .chd, .rvz…)')),
+                 _('Nintendo (NES a Wii, DS, 3DS) · PlayStation 1, 2 y PSP · Sega (Master System a Dreamcast) · recreativas y Neo Geo (MAME) · Atari')),
                 ("media-optical-symbolic", _('CD o DVD de PC'),
                  _('.iso: se extrae a la carpeta de juegos y se identifica solo')),
                 ("folder-symbolic", _('Aventuras clásicas (ScummVM)'),
@@ -215,7 +215,9 @@ class AddGameDialog(Adw.Dialog):
             self._auto_name = c.title
             self.name_row.set_text(c.title)
         rom = c is not None and c.engine == engines.EMULATOR
-        self.wine_group.set_visible(wine or rom)
+        bulk = c is not None and c.engine == "bulk"
+        self.name_row.set_visible(not bulk)          # cada ROM toma su propio nombre
+        self.wine_group.set_visible(wine or rom or bulk)
         self.prefix_group.set_visible(wine)
         new = self._prefix_ids[self.prefix_row.get_selected()] == "__new__"
         self.runner_row.set_visible(new)
@@ -225,6 +227,12 @@ class AddGameDialog(Adw.Dialog):
         elif rom:
             self.hint.set_visible(False)
             self._sync_rom(c)
+        elif bulk:
+            self.hint.set_visible(False)
+            self.move_row.set_visible(True)
+            self.move_row.set_title(_("Guardar cada una en su carpeta"))
+            self.move_row.set_subtitle(_("En {0}/<sistema>/<juego>, como al añadirlas de una en una.")
+                                       .format(self.ctl.games_root()))
         # Disco de PC: hay que extraerlo antes de saber qué es
         extract = c is not None and c.engine == "extract"
         self.extract_row.set_visible(extract and not self._busy)
@@ -240,12 +248,24 @@ class AddGameDialog(Adw.Dialog):
             if install:
                 status = _('{0} no está instalado. Puedes añadirlo igualmente e instalarlo después: {1}') \
                     .format(prog, install)
+            if c.engine == engines.EMULATOR and c.system in engines.SYSTEMS and engines.SYSTEMS[c.system].bios:
+                status = (status + "\n" if status else "") + engines.SYSTEMS[c.system].bios
             if c.engine == engines.VM:
                 status = _('Las máquinas virtuales aún no se pueden lanzar desde Umbral (próximamente).')
+        if bulk:
+            missing = []
+            for sid in dict.fromkeys(x.system for x in c.extra["roms"]):
+                key, base = engines.emulator_for(sid)
+                if not base and engines.EMULATORS[key].name not in missing:
+                    missing.append(engines.EMULATORS[key].name)
+            if missing:
+                status = _("Faltan emuladores: {0}. Puedes añadir las ROMs igualmente e instalarlos en "
+                           "Sistema → Emuladores.").format(", ".join(missing))
         if c is not None:
             self.status_row.set_title(status)
             self.status_row.set_visible(bool(status))
         self.add_btn.set_sensitive(c is not None and not extract and not self._busy and c.engine != engines.VM)
+        self.add_btn.set_label(_("Añadir {0} juegos").format(len(c.extra["roms"])) if bulk else _("Añadir"))
 
     def _sync_rom(self, c: engines.Candidate):
         """ROMs ordenadas por sistema: Juegos/GBA/Pokémon Zafiro/…"""
@@ -298,6 +318,10 @@ class AddGameDialog(Adw.Dialog):
     def _add(self, *_a):
         c = self._current()
         if c is None:
+            return
+        if c.engine == "bulk":
+            self.ctl.add_roms(c.extra["roms"], self.move_row.get_active())
+            self.close()
             return
         name = self.name_row.get_text().strip() or c.title or Path(c.path).stem
         if c.engine in engines.NATIVE_KINDS:

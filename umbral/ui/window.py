@@ -17,6 +17,12 @@ from .system_page import SystemPage
 from .wizard import SetupWizard
 from ..i18n import _
 
+def _fold(text: str) -> str:
+    """Minúsculas y sin tildes, para buscar «piramide» y encontrar «Pirámide»."""
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", text.casefold()) if unicodedata.category(c) != "Mn")
+
+
 CARD_WIDTH = 276   # ancho fijo de todas las tarjetas (el que tenía la de WoW Forever)
 
 CHIP = {State.RUNNING: "running", State.STARTING: "starting", State.STOPPING: "starting",
@@ -32,6 +38,9 @@ class MainWindow(Adw.ApplicationWindow):
         self._keys: list[str] = []
         self.narrow = False
         self._tints: dict[str, str] = {}
+        self._search_text = ""           # búsqueda por título en «Mis juegos y programas»
+        self._search_open = False
+        self._search_entry: Gtk.SearchEntry | None = None
         self._tint_css = Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self._tint_css,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2)
@@ -159,6 +168,7 @@ class MainWindow(Adw.ApplicationWindow):
     def rebuild_library(self):
         while (c := self.library_box.get_first_child()) is not None:
             self.library_box.remove(c)
+        self._search_entry = None            # se recrea con «Mis juegos y programas»
         if not self.ctl.battlenet_ready() and not self.ctl.is_running(BATTLENET_ID):
             self.library_box.append(self._setup_prompt())
         else:
@@ -166,21 +176,164 @@ class MainWindow(Adw.ApplicationWindow):
         games = [g for g in self.ctl.cfg.games if g.id != BATTLENET_ID and not g.hidden]
         blizzard = sorted((g for g in games if g.kind == "blizzard"),
                           key=lambda g: (not g.product.startswith("wow"), g.name.lower()))
-        mine = sorted((g for g in games if g.kind != "blizzard"), key=lambda g: g.name.lower())
+        mine = self._sorted([g for g in games if g.kind != "blizzard"])
         # Cada biblioteca solo aparece si tiene algo
         self._section(_('Biblioteca Battle.net'), blizzard)
-        self._section(_('Mis juegos y programas'), mine)
+        self._section(_('Mis juegos y programas'), mine, filters=True)
 
-    def _section(self, title: str, games: list[Game]):
+    SORTS = {"name": _("Nombre"), "recent": _("Jugado recientemente"), "playtime": _("Más horas")}
+
+    def _sorted(self, games: list[Game]) -> list[Game]:
+        how = self.ctl.cfg.settings.library_sort
+        by_name = sorted(games, key=lambda g: g.name.lower())
+        if how == "recent":     # los nunca jugados, al final y por nombre
+            return sorted(by_name, key=lambda g: g.last_played or "", reverse=True)
+        if how == "playtime":
+            return sorted(by_name, key=lambda g: g.playtime, reverse=True)
+        return by_name
+
+    @staticmethod
+    def _category(g: Game) -> str:
+        """Filtro al que pertenece un juego: windows, scummvm, sys:<sistema> u other."""
+        if g.kind in ("custom", "battlenet"):
+            return "windows"
+        if g.kind == engines.SCUMMVM:
+            return "scummvm"
+        if g.kind == engines.EMULATOR and g.system in engines.SYSTEMS:
+            return f"sys:{g.system}"
+        return "other"
+
+    def _filters(self, games: list[Game]) -> list[tuple[str, str, int]]:
+        """(clave, etiqueta, nº de juegos) de los filtros con algo, en orden fijo."""
+        counts: dict[str, int] = {}
+        for g in games:
+            counts[self._category(g)] = counts.get(self._category(g), 0) + 1
+        order = [("windows", "Windows"), ("scummvm", "ScummVM")]
+        order += [(f"sys:{sid}", s.short) for sid, s in engines.SYSTEMS.items()]
+        order.append(("other", _("Otros")))
+        return [("all", _("Todos"), len(games))] + [(k, label, counts[k]) for k, label in order if k in counts]
+
+    def _section(self, title: str, games: list[Game], filters: bool = False):
         if not games:
             return
-        self.library_box.append(Gtk.Label(label=title, xalign=0, css_classes=["title-2"]))
+        if not filters:
+            self.library_box.append(Gtk.Label(label=title, xalign=0, css_classes=["title-2"]))
+        else:
+            # Título con lupa: la búsqueda por nombre aparece a su lado
+            head = Gtk.Box(spacing=12)
+            head.append(Gtk.Label(label=title, xalign=0, css_classes=["title-2"]))
+            lupa = Gtk.ToggleButton(icon_name="system-search-symbolic", css_classes=["flat", "circular"],
+                                    valign=Gtk.Align.CENTER, active=self._search_open,
+                                    tooltip_text=_("Buscar por título (Ctrl+F)"))
+            entry = Gtk.SearchEntry(placeholder_text=_("Buscar por título…"), width_request=280,
+                                    valign=Gtk.Align.CENTER, text=self._search_text)
+            rev = Gtk.Revealer(child=entry, reveal_child=self._search_open, transition_duration=180,
+                               transition_type=Gtk.RevealerTransitionType.SLIDE_RIGHT)
+            head.append(lupa)
+            head.append(rev)
+            self.library_box.append(head)
+            self._search_entry, self._search_toggle, self._search_rev = entry, lupa, rev
+            lupa.connect("toggled", lambda b: self._show_search(b.get_active()))
+            entry.connect("stop-search", lambda *_a: self._show_search(False))
+        if filters:
+            options = self._filters(games)
+            current = self.ctl.cfg.settings.library_filter
+            if current not in {k for k, _l, _n in options}:
+                current = "all"
+            tools = Gtk.Box(spacing=12)
+            if len(options) > 2:          # con una sola categoría no hace falta filtrar
+                bar = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, column_spacing=8, row_spacing=8,
+                                  max_children_per_line=30, halign=Gtk.Align.START, hexpand=True,
+                                  valign=Gtk.Align.CENTER)
+                first = None
+                for key, label, n in options:
+                    b = Gtk.ToggleButton(css_classes=["filter-chip"], active=key == current, group=first)
+                    first = first or b
+                    row = Gtk.Box(spacing=6)
+                    row.append(Gtk.Label(label=label))
+                    row.append(Gtk.Label(label=str(n), css_classes=["filter-count"]))
+                    b.set_child(row)
+                    b.connect("toggled", lambda btn, k=key: btn.get_active() and self._set_filter(k))
+                    bar.append(b)
+                tools.append(bar)
+            else:
+                tools.append(Gtk.Box(hexpand=True))
+            keys = list(self.SORTS)
+            sort = Gtk.DropDown(model=Gtk.StringList.new(list(self.SORTS.values())), valign=Gtk.Align.CENTER,
+                                selected=keys.index(self.ctl.cfg.settings.library_sort)
+                                if self.ctl.cfg.settings.library_sort in keys else 0,
+                                tooltip_text=_("Ordenar"), css_classes=["flat"])
+            sort.connect("notify::selected", lambda d, *_a: self._set_sort(keys[d.get_selected()]))
+            sort_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+            sort_box.append(Gtk.Image(icon_name="view-sort-descending-symbolic", css_classes=["dim-label"]))
+            sort_box.append(sort)
+            tools.append(sort_box)
+            self.library_box.append(tools)
+            if current != "all":
+                games = [g for g in games if self._category(g) == current]
         flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, halign=Gtk.Align.START,
                            column_spacing=18, row_spacing=18, min_children_per_line=1,
                            max_children_per_line=6)
         for g in games:
             flow.append(self._card(g))
+            flow.get_last_child().set_name(_fold(g.name))     # para la búsqueda
         self.library_box.append(flow)
+        if filters:
+            self._search_flow = flow
+            self._no_match = Gtk.Label(css_classes=["dim-label"], xalign=0, visible=False)
+            self.library_box.append(self._no_match)
+            flow.set_filter_func(lambda child: _fold(self._search_text) in child.get_name())
+            self._search_entry.connect("search-changed", self._on_search)
+            self._update_no_match()
+            if self._search_open:
+                GLib.idle_add(lambda: (self._search_entry.grab_focus(),
+                                       self._search_entry.set_position(-1), False)[-1])
+
+    def _show_search(self, show: bool):
+        """Lupa: abre el buscador junto al título; al cerrarlo se borra la búsqueda."""
+        self._search_open = show
+        if self._search_toggle.get_active() != show:
+            self._search_toggle.set_active(show)
+        self._search_rev.set_reveal_child(show)
+        if show:
+            self._search_entry.grab_focus()
+        elif self._search_entry.get_text():
+            self._search_entry.set_text("")          # dispara search-changed y vuelve a mostrar todo
+
+    def _on_search(self, entry: Gtk.SearchEntry):
+        self._search_text = entry.get_text().strip()
+        self._search_flow.invalidate_filter()
+        self._update_no_match()
+
+    def _update_no_match(self):
+        q = _fold(self._search_text)
+        any_match = False
+        child = self._search_flow.get_first_child()
+        while child is not None:
+            any_match = any_match or q in child.get_name()
+            child = child.get_next_sibling()
+        self._no_match.set_label(_("Ningún juego coincide con «{0}».").format(self._search_text))
+        self._no_match.set_visible(bool(q) and not any_match)
+
+    def _set_sort(self, key: str):
+        if self.ctl.cfg.settings.library_sort == key:
+            return
+        self.ctl.cfg.settings.library_sort = key
+        self._set_filter(self.ctl.cfg.settings.library_filter, force=True)
+
+    def _set_filter(self, key: str, force: bool = False):
+        if self.ctl.cfg.settings.library_filter == key and not force:
+            return
+        self.ctl.cfg.settings.library_filter = key
+        self.ctl.save()
+        adj = self.library_box.get_ancestor(Gtk.ScrolledWindow).get_vadjustment()
+        pos = adj.get_value()
+
+        def rebuild():                       # fuera del manejador del botón, sin saltar arriba
+            self.rebuild_library()
+            GLib.idle_add(lambda: (adj.set_value(min(pos, adj.get_upper() - adj.get_page_size())), False)[1])
+            return False
+        GLib.idle_add(rebuild)
 
     def _hero_box(self) -> tuple[Gtk.Box, Gtk.Box]:
         """(banner, fila superior). En estrecho los botones van en una segunda fila."""
@@ -467,6 +620,9 @@ class MainWindow(Adw.ApplicationWindow):
         if self.console_btn.get_active():
             self.console_btn.set_active(False)
             return True
+        if self._search_open and self._search_entry is not None:
+            self._show_search(False)
+            return True
         return False
 
     def _show_console(self, key: str):
@@ -522,6 +678,8 @@ class MainWindow(Adw.ApplicationWindow):
         act("icon-pick", lambda gid: self._pick_cover(gid, "icon"), True)
         act("icon-clear", lambda gid: self.ctl.set_cover(gid, None, "icon"), True)
         self.get_application().set_accels_for_action("win.toggle-log", ["<Control>l"])
+        act("search", lambda _a: self._search_entry is not None and self._show_search(True))
+        self.get_application().set_accels_for_action("win.search", ["<Control>f"])
         esc = Gtk.ShortcutController(scope=Gtk.ShortcutScope.MANAGED)
         esc.add_shortcut(Gtk.Shortcut(trigger=Gtk.ShortcutTrigger.parse_string("Escape"),
                                       action=Gtk.CallbackAction.new(self._esc_console)))

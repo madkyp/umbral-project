@@ -160,7 +160,7 @@ class SystemPage(Adw.PreferencesPage):
         for g in self._dynamic + [self._static_hypr, self._static_look, self._static_sgdb, self._static_paths]:
             if g.get_parent():
                 self.remove(g)
-        self._dynamic = [self._gpu_group(), self._runner_group(), self._emulator_group()]
+        self._dynamic = [self._gpu_group(), self._runner_group(), self._emulator_group(), self._bios_group()]
         for g in self._dynamic:
             self.add(g)
         for g in (self._static_hypr, self._static_look, self._static_sgdb, self._static_paths):
@@ -267,6 +267,47 @@ class SystemPage(Adw.PreferencesPage):
                 b.connect("clicked", lambda _b, t=cmd: copy_text(_b, t))
                 row.add_suffix(b)
             g.add(row)
+        return g
+
+    def _bios_group(self) -> Adw.PreferencesGroup:
+        """BIOS que necesitan tus emuladores: si están y dónde ponerlas. Umbral no incluye ninguna."""
+        g = Adw.PreferencesGroup(
+            title="BIOS",
+            description=_("Algunas consolas necesitan la BIOS de tu propia consola (Umbral no la incluye). "
+                          "Aquí ves si tus emuladores la encuentran y en qué carpeta va."))
+        refresh = Gtk.Button(icon_name="view-refresh-symbolic", css_classes=["flat"], tooltip_text=_('Volver a comprobar'))
+        refresh.connect("clicked", lambda *_a: self.rebuild())
+        g.set_header_suffix(refresh)
+        root = self.ctl.games_root()
+        rows = 0
+        for check in engines.BIOS_CHECKS:
+            if not engines.installed_as(check.emulator):
+                continue                      # solo para los emuladores que tienes
+            ok, name, folder = engines.bios_status(check, root)
+            system = engines.SYSTEMS[check.system]
+            title = f"{system.short} · {engines.EMULATORS[check.emulator].name}"
+            if ok:
+                sub = _("Encontrada: {0}").format(name) + (f" · {folder}" if folder else "")
+            elif folder:
+                want = ", ".join(check.names) if check.names else _("la BIOS de tu consola")
+                sub = _("Falta: copia {0} en {1}").format(want, folder)
+            else:
+                sub = _("Falta.")
+            if check.note:
+                sub += " · " + check.note
+            row = Adw.ActionRow(use_markup=False, title=title, subtitle=sub, subtitle_selectable=True)
+            row.add_prefix(Gtk.Image(icon_name="object-select-symbolic" if ok else "dialog-warning-symbolic",
+                                     css_classes=["success"] if ok else ["issue-warning"]))
+            if folder:
+                b = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                               tooltip_text=_("Abrir carpeta"))
+                b.connect("clicked", lambda _b, d=folder: self._open(d))
+                row.add_suffix(b)
+            g.add(row)
+            rows += 1
+        if not rows:
+            g.add(Adw.ActionRow(use_markup=False, title=_("Ninguno de tus emuladores necesita BIOS"),
+                                subtitle=_("PS1, PS2, Saturn, Mega CD, Neo Geo y Atari 5200/800 sí la necesitan.")))
         return g
 
     def _download(self, source: str):

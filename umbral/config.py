@@ -94,6 +94,7 @@ class Game:
     system: str = ""          # emuladores: gba, ps1, ps2, gc… · VM: win9x
     target: str = ""          # ScummVM: id del juego (p. ej. pink:peril)
     cdrom: str = ""           # VM: imagen del CD
+    search_name: str = ""     # título original detectado (ScummVM, ROM…) para buscar portadas
 
     @classmethod
     def from_dict(cls, d: dict) -> "Game":
@@ -115,6 +116,8 @@ class Settings:
     window_width: int = 1180
     window_height: int = 680
     first_run_done: bool = False
+    library_filter: str = "all"  # filtro de «Mis juegos»: all, windows, scummvm, sys:<sistema>, other
+    library_sort: str = "name"   # orden de «Mis juegos»: name, recent, playtime
 
 
 @dataclass

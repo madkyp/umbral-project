@@ -244,8 +244,17 @@ def build_native(cfg: Config, game: Game, report: gpumod.GpuReport | None = None
     MangoHud, gamescope, límite de FPS, GPU y Control Deck)."""
     from . import engines
     opts = merged(NATIVE_DEFAULTS, game.options)
-    cmd, cwd = engines.command(game, opts.fullscreen)
+    games_root = Path(cfg.settings.games_root).expanduser()
+    cmd, cwd = engines.command(game, opts.fullscreen, games_root)
     warnings: list[str] = []
+    if game.kind == engines.EMULATOR and game.system in engines.SYSTEMS:
+        emu = engines.emulator_for(game.system)[0]
+        st = engines.bios_for(game.system, emu, games_root)
+        if st is not None and not st[0] and game.system != "arcade":
+            where = _(" en {0}").format(st[2]) if st[2] else ""
+            warnings.append(_("No se encuentra la BIOS de {0} para {1}{2}: el juego puede no arrancar "
+                              "(Sistema → BIOS).").format(engines.SYSTEMS[game.system].short,
+                                                         engines.EMULATORS[emu].name, where))
     env: dict[str, str] = {}
     wrappers, target, deck = _tools(opts, env, warnings, game, report, native=True)
     argv = wrappers + cmd + shlex.split(opts.args or "")

@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.13.0](https://img.shields.io/badge/version-0.13.0-informational)
+![Version 0.14.0](https://img.shields.io/badge/version-0.14.0-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -52,7 +52,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
   - **Not everything goes through Wine** — Umbral identifies what you pick and proposes how to open it:
     - a **ScummVM** game (folder, or the `.exe` inside one) → ScummVM, which knows the exact edition (*"The Pink Panther: Passport to Peril (Windows/Spanish)"*);
     - a **PC CD/DVD** (`.iso`) → extracted to the games folder (no mounting, no sudo) and identified;
-    - a **console ROM or disc image** → its emulator. The system is read from the image itself (`SYSTEM.CNF` on PlayStation discs, `PSP_GAME` on UMDs, the disc header on GameCube / Wii, CD vs DVD in `.chd`, `PARAM.SFO` in `.pbp`), not guessed from the extension:
+    - a **console ROM or disc image** → its emulator. The system is read from the image itself (`SYSTEM.CNF` on PlayStation discs, `PSP_GAME` on UMDs, the disc header on GameCube / Wii and Sega CD systems, CD vs DVD in `.chd`, `PARAM.SFO` in `.pbp`), not guessed from the extension:
 
       | System | Emulator (first installed wins) |
       |---|---|
@@ -62,6 +62,10 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
       | GameCube / Wii | Dolphin |
       | PS1 · PS2 · PSP | DuckStation · PCSX2 · PPSSPP |
       | Atari 2600 | Stella |
+      | Mega CD · Saturn · Dreamcast | ares · Ymir / Mednafen · Flycast |
+      | Arcade / Neo Geo · Atari 5200 / 800 | MAME |
+
+      Saturn, Mega CD, Neo Geo and the Atari 5200/800 need their BIOS, set up in the emulator (not included). A `.chd` of a CD doesn't say which console it's for, so Umbral proposes PS1 and lets you pick Saturn or Mega CD instead; GD-ROM `.chd` files are recognised as Dreamcast. Arcade ROMs stay where they are, because MAME looks for the BIOS (`neogeo.zip`) next to them.
 
     - and a Windows `.exe` → Wine / Proton, as always.
   - **ROMs are kept tidy**: each one moves to its own folder grouped by system — `~/Games/umbral/games/GBA/Pokémon Sapphire/`, `…/GBA/Pokémon Ruby/`, `…/PS1/Crash Bandicoot/` (a `.cue` takes its `.bin` tracks along). On by default when adding, never overwrites, and also available later from the card's ⋮ menu. Extracted ScummVM discs go to `…/ScummVM/<game>/`.
@@ -73,7 +77,10 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
   - by default the **game's own icon** (extracted from the `.exe`) sits in the logo slot over its dominant colour;
   - a **cover image** you pick is shown **whole, edge to edge** — no cropping or zoom, the spare space takes the image's colour;
   - a custom **icon** is fitted into the logo slot keeping its transparency.
-- **[SteamGridDB](https://www.steamgriddb.com/) covers**: games you add get a cover automatically, and a gallery in each game's settings lets you pick community covers or logos. Needs your free API key (*System → SteamGridDB*), stored only on your machine.
+- **Finding your games**: filters by type in *My games and programs* (Windows, ScummVM, GBA, PS1…, only the ones you have); a search by title (🔍 or Ctrl+F, ignoring case and accents) and sorting by name, recently played or most played — all remembered.
+- **A whole folder of ROMs at once**: pick a folder in *Add → Folder…* and Umbral finds every ROM and disc image in it (a `.cue`'s tracks or a `.m3u`'s discs count as one game), shows a summary (*"GBA 8 · PS1 3 · SNES 1"*), warns about missing emulators and files each one into its system folder.
+- **BIOS check** (*System → BIOS*): for the emulators you have, whether they find the BIOS of PS1, PS2, Saturn, Mega CD, Neo Geo or Atari 5200/800 — looked up where each emulator really looks (checked in their source) — and the folder to put it in. Umbral never includes a BIOS. Launching a game whose BIOS is missing says so in the log.
+- **[SteamGridDB](https://www.steamgriddb.com/) covers**: games you add get a cover automatically, and a gallery in each game's settings lets you pick community covers or logos. The automatic one is chosen by **how well the title matches** (several searches: without version or region tags, each part of "A - B"; also the original title Umbral detected, e.g. the one ScummVM reports), and if nothing is close enough it keeps the icon rather than another game's cover. Needs your free API key (*System → SteamGridDB*), stored only on your machine.
 - **Playtime**: total hours and last session on every card (*"3 h 20 min · today"*), saved every minute — also when WoW is started through Battle.net.
 
 ### 🖥️ GPU aware — NVIDIA, AMD and hybrids

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -126,13 +127,65 @@ def download(url: str, name: str) -> Path:
     return dest
 
 
-def best_cover(name: str, key: str | None = None) -> Path | None:
-    """Portada automática: primer resultado de la búsqueda y su primera portada apaisada."""
-    found = search(name, key)
-    if not found:
+def _fold(text: str) -> str:
+    import unicodedata
+    t = "".join(c for c in unicodedata.normalize("NFD", text.casefold()) if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+
+def queries(name: str) -> list[str]:
+    """Búsquedas para un nombre: limpio (sin versión ni etiquetas) y cada parte de «A - B» o «A: B»."""
+    clean = re.sub(r"\s*[\(\[][^)\]]*[\)\]]", "", name)                       # (Spain) [!]
+    clean = re.sub(r"\s+v?\d+(\.\d+){1,3}[a-z]?\b", "", clean, flags=re.I)    # v2.0.3.2
+    clean = re.sub(r"\s{2,}", " ", clean).strip(" -:")
+    out = [clean] if clean else [name]
+    parts = [x.strip() for x in re.split(r"\s+-\s+|:\s+", clean) if len(x.strip()) >= 3]
+    if len(parts) > 1:
+        out += parts
+    return list(dict.fromkeys(out))
+
+
+def similarity(a: str, b: str) -> float:
+    """0..1: parecido entre dos títulos, sin tildes ni mayúsculas ni signos."""
+    from difflib import SequenceMatcher
+    fa, fb = _fold(a), _fold(b)
+    if not fa or not fb:
+        return 0.0
+    ratio = SequenceMatcher(None, fa, fb).ratio()
+    ta, tb = set(fa.split()), set(fb.split())
+    overlap = len(ta & tb) / max(1, min(len(ta), len(tb)))      # palabras en común
+    return max(ratio, 0.9 * overlap if min(len(ta), len(tb)) >= 2 or fa == fb else 0.0)
+
+
+MIN_SCORE = 0.72
+
+
+def match(names: str | list[str], key: str | None = None) -> tuple[SGDBGame | None, float]:
+    """El juego de SteamGridDB que mejor encaja con alguno de los nombres (el que ves y el original
+    detectado), puntuando todos los resultados de todas las búsquedas. (None, 0) si no hay resultados."""
+    names = [names] if isinstance(names, str) else [n for n in dict.fromkeys(names) if n]
+    best, score = None, 0.0
+    for name in names:
+        for q in queries(name):
+            for g in search(q, key)[:8]:
+                s = max(similarity(name, g.name), similarity(q, g.name))
+                if s > score:
+                    best, score = g, s
+            if score >= 0.97:
+                return best, score
+    return best, score
+
+
+def best_cover(name: str | list[str], key: str | None = None) -> Path | None:
+    """Portada automática del juego que mejor encaja; None si ninguno se parece lo bastante
+    (mejor el icono que la portada de otro juego)."""
+    found, score = match(name, key)
+    if found is None or score < MIN_SCORE:
+        log.info("SteamGridDB: «%s» sin coincidencia clara (mejor: %s, %.2f)", name,
+                 found.name if found else "-", score)
         return None
-    imgs = images(found[0].id, "grids", key)
+    imgs = images(found.id, "grids", key)
     if not imgs:
         return None
-    log.info("SteamGridDB: «%s» → %s (%s)", name, found[0].name, imgs[0].url)
-    return download(imgs[0].url, f"auto-{found[0].id}")
+    log.info("SteamGridDB: «%s» → %s (%.2f, %s)", name, found.name, score, imgs[0].url)
+    return download(imgs[0].url, f"auto-{found.id}")

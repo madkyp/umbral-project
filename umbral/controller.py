@@ -606,7 +606,7 @@ class Controller:
         if c.engine == engines.SCUMMVM and Path(path).parent.resolve() == root.resolve():
             # disco recién extraído: como las ROMs, agrupado → Juegos/ScummVM/<juego>
             base = root / "ScummVM"
-            clean = name.replace("/", "-").strip() or Path(path).name
+            clean = engines.folder_name(name) or Path(path).name
             dest, n = base / clean, 2
             while dest.exists():
                 dest, n = base / f"{clean} ({n})", n + 1
@@ -617,13 +617,63 @@ class Controller:
             except OSError as e:
                 log.warning("No se pudo mover %s a %s: %s", path, dest, e)
         g = Game(Config.new_id(), name, c.engine, "", path, system=c.system, target=c.target,
-                 cdrom=c.extra.get("cdrom", ""))
+                 cdrom=c.extra.get("cdrom", ""), search_name=c.title if c.title != name else "")
         self.cfg.games.append(g)
         self.save()
         self.emit("library")
         if sgdb.get_key():
             self.fetch_cover(g.id, quiet=True)
         return g
+
+    def add_roms(self, cands: list, organize: bool) -> list[Game]:
+        """Añade muchas ROMs de golpe (las que ya están en la biblioteca se saltan). Guardarlas en
+        su carpeta y buscar sus portadas se hace después, de una en una, en segundo plano."""
+        have = set()
+        for g in self.cfg.games:
+            try:
+                have.add(Path(g.exe).resolve())
+            except OSError:
+                pass
+        added = []
+        for c in cands:
+            if Path(c.path).resolve() in have:
+                continue
+            g = Game(Config.new_id(), c.title, engines.EMULATOR, "", c.path, system=c.system)
+            self.cfg.games.append(g)
+            added.append(g)
+        self.save()
+        self.emit("library")
+        if not added:
+            return added
+        root, key = self.games_root(), sgdb.get_key()
+        for g in added:
+            self.moving.add(g.id)
+
+        def work():
+            for g in added:
+                if organize and not engines.is_organized(g.exe, root, g.system):
+                    try:
+                        new = engines.organize_rom(g.exe, root, g.system, g.name)
+                        GLib.idle_add(lambda g=g, new=new: (setattr(g, "exe", new), False)[1])
+                    except OSError as e:
+                        log.warning("No se pudo guardar %s en su carpeta: %s", g.exe, e)
+                GLib.idle_add(lambda g=g: (self.moving.discard(g.id), False)[1])
+                if key:
+                    try:
+                        path = sgdb.best_cover([g.name])
+                        if path:
+                            GLib.idle_add(lambda g=g, path=path: (self.set_cover(g.id, str(path)), False)[1])
+                    except sgdb.SGDBError as e:
+                        log.info("SteamGridDB sin portada para %s: %s", g.name, e)
+
+            def done():
+                self.save()
+                self.emit("library")
+                self.emit("toast", _("{0} juegos añadidos").format(len(added)))
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+        return added
 
     # ------------------------------------------------------------ emuladores
     def install_emulator(self, key: str) -> None:
@@ -662,7 +712,7 @@ class Controller:
         """Extrae un CD/DVD de PC a la carpeta de juegos y lo identifica (en segundo plano).
         on_done(carpeta, candidatos) en el hilo principal; (None, []) si falla."""
         root = self.games_root()
-        base = name.replace("/", "-").strip() or Path(iso).stem   # como al mover juegos: «Nombre (2)»
+        base = engines.folder_name(name) or Path(iso).stem   # como al mover juegos: «Nombre (2)»
         dest, n = root / base, 2
         while dest.exists():
             dest, n = root / f"{base} ({n})", n + 1
@@ -687,7 +737,7 @@ class Controller:
 
         def work():
             try:
-                path = sgdb.best_cover(g.name)
+                path = sgdb.best_cover([g.name, g.search_name])
             except sgdb.SGDBError as e:
                 if not quiet:
                     self.error(str(e))
@@ -695,7 +745,8 @@ class Controller:
                 return
             if path is None:
                 if not quiet:
-                    self.emit("toast", _("SteamGridDB no tiene portada para «{0}».").format(g.name))
+                    self.emit("toast", _("SteamGridDB no tiene una portada clara para «{0}»: elígela en ⚙ → "
+                                         "Buscar en SteamGridDB.").format(g.name))
                 return
             GLib.idle_add(lambda: (self.set_cover(game_id, str(path)), False)[1])
         threading.Thread(target=work, daemon=True).start()
