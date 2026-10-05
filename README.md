@@ -3,13 +3,13 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.14.2](https://img.shields.io/badge/version-0.14.2-informational)
+![Version 0.14.3](https://img.shields.io/badge/version-0.14.3-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
 ![GTK4 + libadwaita](https://img.shields.io/badge/GTK4-libadwaita-4a86cf)
 ![umu + Proton](https://img.shields.io/badge/umu-Proton-b9a3e3)
-[![Works with Control Deck](https://img.shields.io/badge/works%20with-Control%20Deck-e0a84d)](https://github.com/madkyp/control-deck)
+[![Works with Gaming Deck](https://img.shields.io/badge/works%20with-Gaming%20Deck-5eead4)](https://github.com/madkyp/gaming-deck)
 
 **A minimal Battle.net launcher for Arch / CachyOS + Hyprland**, built with GTK4 / libadwaita and running games through [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher) + Proton.
 
@@ -17,7 +17,7 @@ Umbral installs the **official Battle.net client** in its own Proton prefix (or 
 
 > *Umbral* is Spanish for *threshold*: the doorway between your Linux desktop and your Windows games.
 
-> 🤝 **Works with [Control Deck](https://github.com/madkyp/control-deck)** — the author's app manager for Arch / Hyprland. Install both and Control Deck adds shaders, an in-game temperature line and a CPU scheduler to Umbral's games. See [Control Deck compatibility](#-control-deck-compatibility).
+> 🤝 **Works with [Gaming Deck](https://github.com/madkyp/gaming-deck)** — the author's per-game profiles, shaders and gaming status app for Arch / Hyprland. Install both and Gaming Deck adds shaders, an in-game temperature line and a CPU scheduler to Umbral's games. See [Gaming Deck compatibility](#-gaming-deck-compatibility).
 
 > ⚠️ **Alpha version.** Umbral works end to end on the author's machine (CachyOS + Hyprland + NVIDIA), but it is young software: expect rough edges and please report what breaks.
 
@@ -70,7 +70,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
     - and a Windows `.exe` → Wine / Proton, as always.
   - **ROMs are kept tidy**: each one moves to its own folder grouped by system — `~/Games/umbral/games/GBA/Pokémon Sapphire/`, `…/GBA/Pokémon Ruby/`, `…/PS1/Crash Bandicoot/` (a `.cue` takes its `.bin` tracks along). On by default when adding, never overwrites, and also available later from the card's ⋮ menu. Extracted ScummVM discs go to `…/ScummVM/<game>/`.
   - **System → Emulators** lists every emulator with its status and an **Install** button: Flathub for your user or the official AppImage (DuckStation), **no sudo**; the few only packaged for Arch show the `pacman` command to copy. Flatpak emulators get access to the ROM's folder only.
-  - Emulators aren't bundled: Umbral uses the ones you have (package, AppImage or Flathub). No BIOS, ROMs or operating systems are included. ScummVM and emulator games get GameMode, MangoHud, gamescope, FPS limit, GPU choice, Control Deck and playtime like any other game, plus a fullscreen switch.
+  - Emulators aren't bundled: Umbral uses the ones you have (package, AppImage or Flathub). No BIOS, ROMs or operating systems are included. ScummVM and emulator games get GameMode, MangoHud, gamescope, FPS limit, GPU choice, Gaming Deck and playtime like any other game, plus a fullscreen switch.
   - After running an **installer**, Umbral lists the new executables it left behind and adds the game with one click.
   - **Moves the game into Umbral's games folder** (`~/Games/umbral/games/`, on by default) so it doesn't live in *Downloads* waiting to be deleted by accident. Only the game's own folder moves — a loose `.exe` in *Downloads* moves alone, `bin/` or `Binaries/Win64/` layouts move from the game's root, and installers are never moved. Already-added games can be moved from their ⋮ menu, and removing a game offers to delete its files too (never without asking).
 - **Every card has the same size**, Battle.net games and your own alike:
@@ -101,7 +101,7 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 - **Tray icon** (StatusNotifierItem — Waybar, KDE…): closing the window keeps Umbral in the background; the menu opens Battle.net or any game. When a game starts, Umbral **hides itself in the tray** (optional; Hyprland has no "minimise").
 - Optional **floating window** on Hyprland (runtime rule, your config is never touched) and a validated **Hyprland snippet** (`Hyprland --verify-config`) with window rules and a keybind.
 - `.desktop` shortcuts per game, desktop notifications, a collapsible **log console** and per-launch log files.
-- **[Control Deck](https://github.com/madkyp/control-deck) integration** (optional): when it is installed, Umbral asks it before each launch (`control-deck hook umbral:<id>`) and adds what you set there for that game: **visual shaders** (ReShade or vkBasalt), the **TEMPS** in-game temperature line and the **CPU scheduler while playing**. Umbral's own options and your environment variables still win. See [Control Deck compatibility](#-control-deck-compatibility).
+- **[Gaming Deck](https://github.com/madkyp/gaming-deck) integration** (optional): when it is installed, Umbral asks it before each launch (`gaming-deck hook umbral:<id>`) and adds what you set there for that game: **visual shaders** (ReShade or vkBasalt), the **TEMPS** in-game temperature line and the **CPU scheduler while playing**. Umbral's own options and your environment variables still win. See [Gaming Deck compatibility](#-gaming-deck-compatibility).
 - **English and Spanish** (follows the system language, switchable in *System → Appearance*).
 
 ---
@@ -208,20 +208,22 @@ Your prefixes (`~/Games/umbral/`) and settings (`~/.config/umbral/`) are left un
 
 ---
 
-## 🤝 Control Deck compatibility
+## 🤝 Gaming Deck compatibility
 
-Umbral is designed to work together with **[Control Deck](https://github.com/madkyp/control-deck)** (`github.com/madkyp/control-deck`), a one-click app installer and manager for Arch / CachyOS + Hyprland by the same author. Both are independent and optional for each other: with Control Deck installed, Umbral picks it up automatically — nothing to configure.
+Umbral is designed to work together with **[Gaming Deck](https://github.com/madkyp/gaming-deck)** (`github.com/madkyp/gaming-deck`), per-game profiles, visual shaders and gaming status for Steam and Umbral games on Arch / CachyOS + Hyprland, by the same author. Both are independent and optional for each other: with Gaming Deck installed, Umbral picks it up automatically — nothing to configure.
+
+> Gaming Deck used to be the GAMING tab of **Control Deck**. Umbral still talks to an old `control-deck` if that is what you have.
 
 | | What you get |
 |---|---|
-| **Shaders** | ReShade or vkBasalt effects you set for a game in Control Deck are applied when Umbral launches it |
-| **TEMPS** | Control Deck's in-game CPU / GPU temperature line while the game runs |
-| **CPU scheduler** | Control Deck switches the CPU scheduler while you play and restores it when the game closes |
-| **Running games** *(available for Control Deck)* | Exact running games (process, Proton, prefix, play time) through `running.json` — no confusion between two `Game.exe` |
-| **Stop button** *(available for Control Deck)* | `umbral --stop <id>` closes a game cleanly, like Steam's STOP |
-| **Editable game profiles** *(available for Control Deck)* | `umbral --get` / `--set` read and change GameMode, MangoHud, FPS limit, gamescope or environment variables — so *CHECK FOR THIS PC* can fix Umbral games too |
+| **Shaders** | ReShade or vkBasalt effects you set for a game in Gaming Deck are applied when Umbral launches it |
+| **TEMPS** | Gaming Deck's in-game CPU / GPU temperature line while the game runs |
+| **CPU scheduler** | Gaming Deck switches the CPU scheduler while you play and restores it when the game closes |
+| **Running games** *(available for Gaming Deck)* | Exact running games (process, Proton, prefix, play time) through `running.json` — no confusion between two `Game.exe` |
+| **Stop button** *(available for Gaming Deck)* | `umbral --stop <id>` closes a game cleanly, like Steam's STOP |
+| **Editable game profiles** *(available for Gaming Deck)* | `umbral --get` / `--set` read and change GameMode, MangoHud, FPS limit, gamescope or environment variables — so *CHECK FOR THIS PC* can fix Umbral games too |
 
-Umbral's own options and your environment variables always win over what Control Deck adds. Technical details for both sides are in [Integration](#-integration).
+Umbral's own options and your environment variables always win over what Gaming Deck adds. Technical details for both sides are in [Integration](#-integration).
 
 ---
 
@@ -229,7 +231,7 @@ Umbral's own options and your environment variables always win over what Control
 
 > 🧩 **Mods:** with **[Crisol](https://github.com/madkyp/crisol-app)** installed (the author's mod manager), each game's ⋯ menu gets **Mods (Crisol)**, which opens that game in Crisol (`crisol --game umbral:<id>`). Mods Crisol applies are already in the game folder, so **Play** in Umbral starts the game with them.
 
-Other apps (e.g. [Control Deck](https://github.com/madkyp/control-deck)) can follow and control Umbral's games:
+Other apps (e.g. [Gaming Deck](https://github.com/madkyp/gaming-deck)) can follow and control Umbral's games:
 
 - **`$XDG_RUNTIME_DIR/umbral/running.json`** — the games running right now, rewritten whenever that changes:
 
@@ -249,7 +251,7 @@ Other apps (e.g. [Control Deck](https://github.com/madkyp/control-deck)) can fol
 - **`umbral --stop <id>`** — closes a game; the running Umbral does it without showing its window (exit code 0 = closing, 1 = not running). Works even if Umbral is closed, using `running.json`.
 - **`umbral --set <id> key=value …`** — changes a game's options from outside (all or nothing: one invalid value and nothing changes; exit code 2). The running Umbral applies and saves it; without Umbral, the config is edited directly. Keys:
   `gamemode`, `mangohud`, `wayland`, `writecopy`, `wined3d`, `shader_cache`, `gamescope`, `esync`, `fsync`, `ntsync` (`on` / `off` / `default`) · `mangohud_preset` (`fps` / `basic` / `full`) · `mangohud_position` · `fps_limit` (0–1000) · `gamescope_resolution` (`640x480`… or `screen`) · `gamescope_mode` · `gamescope_scaler` · `gamescope_filter` · `gamescope_args` · `args` · `gpu` (`auto` or `vvvv:dddd`) · `runner` · `fullscreen` (ScummVM and emulators) · `env.NAME=value` (`env.NAME=` removes it). `default` goes back to inheriting from the prefix; for Battle.net they are the prefix's options. `umbral --get <id>` returns the same keys (`options` = set, `effective` = used at launch).
-- **`control-deck hook umbral:<id>`** — if Control Deck is installed, Umbral asks it for extra launch variables (ReShade / vkBasalt) and lets it follow the session (TEMPS, CPU scheduler) while the game runs.
+- **`gaming-deck hook umbral:<id>`** — if Gaming Deck is installed (or an older `control-deck`), Umbral asks it for extra launch variables (ReShade / vkBasalt) and lets it follow the session (TEMPS, CPU scheduler) while the game runs.
 
 ---
 

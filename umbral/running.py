@@ -1,4 +1,4 @@
-"""Juegos en marcha: archivo de estado para otras apps (p. ej. Control Deck) y cierre ordenado.
+"""Juegos en marcha: archivo de estado para otras apps (p. ej. Gaming Deck) y cierre ordenado.
 
 Umbral escribe $XDG_RUNTIME_DIR/umbral/running.json (o ~/.local/state/umbral si no hay
 XDG_RUNTIME_DIR). Formato (version 1):

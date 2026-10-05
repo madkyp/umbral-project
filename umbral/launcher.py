@@ -139,7 +139,7 @@ class LaunchPlan:
     runner: Runner
     gpu: gpumod.Gpu | None
     warnings: list[str] = field(default_factory=list)
-    deck_session: bool = False   # Control Deck acompaña al juego (TEMPS, planificador de CPU…)
+    deck_session: bool = False   # Gaming Deck acompaña al juego (TEMPS, planificador de CPU…)
 
     def full_env(self) -> dict[str, str]:
         return {**os.environ, **self.env}
@@ -149,12 +149,17 @@ class LaunchPlan:
         return f"{env} {shlex.join(self.argv)}"
 
 
-def deck_hook(game_id: str) -> dict:
-    """Lo que Control Deck (si está instalado) añade a este juego: variables de sus shaders y TEMPS.
+def deck_bin() -> str | None:
+    """Gaming Deck, o Control Deck si aún no se ha migrado (su pestaña GAMING entendía las mismas órdenes)."""
+    return shutil.which("gaming-deck") or shutil.which("control-deck")
 
-    `control-deck hook umbral:<id>` → {"env": {...}, "overlay": bool, "session": bool}. Ante cualquier fallo, {}.
+
+def deck_hook(game_id: str) -> dict:
+    """Lo que Gaming Deck (si está instalado) añade a este juego: variables de sus shaders y TEMPS.
+
+    `gaming-deck hook umbral:<id>` → {"env": {...}, "overlay": bool, "session": bool}. Ante cualquier fallo, {}.
     """
-    deck = shutil.which("control-deck")
+    deck = deck_bin()
     if not deck:
         return {}
     try:
@@ -166,8 +171,8 @@ def deck_hook(game_id: str) -> dict:
 
 
 def start_deck_session(pid: int, game_id: str) -> None:
-    """Control Deck acompaña al proceso: TEMPS, planificador de CPU mientras se juega; termina con él."""
-    deck = shutil.which("control-deck")
+    """Gaming Deck acompaña al proceso: TEMPS, planificador de CPU mientras se juega; termina con él."""
+    deck = deck_bin()
     if deck:
         try:
             subprocess.Popen([deck, "session", str(pid), f"umbral:{game_id}"], stdin=subprocess.DEVNULL,
@@ -241,7 +246,7 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
 
 def build_native(cfg: Config, game: Game, report: gpumod.GpuReport | None = None) -> LaunchPlan:
     """ScummVM y emuladores: sin prefijo ni Proton, con las mismas herramientas (GameMode,
-    MangoHud, gamescope, límite de FPS, GPU y Control Deck)."""
+    MangoHud, gamescope, límite de FPS, GPU y Gaming Deck)."""
     from . import engines
     opts = merged(NATIVE_DEFAULTS, game.options)
     games_root = Path(cfg.settings.games_root).expanduser()
@@ -264,8 +269,8 @@ def build_native(cfg: Config, game: Game, report: gpumod.GpuReport | None = None
 
 def _tools(opts: LaunchOptions, env: dict[str, str], warnings: list[str], game: Game | None,
            report: gpumod.GpuReport | None, native: bool = False) -> tuple[list[str], gpumod.Gpu | None, bool]:
-    """GPU, gamescope, GameMode, MangoHud, límite de FPS y Control Deck (modifica env y warnings).
-    Devuelve (envoltorios del comando, GPU elegida, si Control Deck acompaña la partida)."""
+    """GPU, gamescope, GameMode, MangoHud, límite de FPS y Gaming Deck (modifica env y warnings).
+    Devuelve (envoltorios del comando, GPU elegida, si Gaming Deck acompaña la partida)."""
     target = None
     if report is not None:
         genv, target = gpumod.gpu_env(report, opts.gpu)
@@ -304,7 +309,7 @@ def _tools(opts: LaunchOptions, env: dict[str, str], warnings: list[str], game: 
             env["DXVK_FRAME_RATE"] = env["VKD3D_FRAME_RATE"] = str(fps)
             warnings.append(_("Sin MangoHud el límite de FPS depende de tu Proton (DXVK_FRAME_RATE)."))
 
-    # Control Deck: ReShade / vkBasalt y la línea de temperaturas (TEMPS)
+    # Gaming Deck: ReShade / vkBasalt y la línea de temperaturas (TEMPS)
     hook = deck_hook(game.id) if game is not None else {}
     for k, v in (hook.get("env") or {}).items():
         if k == "WINEDLLOVERRIDES" and env.get(k):

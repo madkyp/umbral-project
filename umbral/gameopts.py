@@ -1,4 +1,4 @@
-"""Opciones de un juego desde fuera de la interfaz: `umbral --get/--set` (p. ej. Control Deck).
+"""Opciones de un juego desde fuera de la interfaz: `umbral --get/--set` (p. ej. Gaming Deck).
 
 Claves públicas y estables (independientes de los nombres internos de LaunchOptions):
 

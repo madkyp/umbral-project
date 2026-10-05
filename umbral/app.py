@@ -106,7 +106,7 @@ class UmbralApp(Adw.Application):
                 cmdline.printerr_literal(out + "\n")
             return code
         if args.stop:
-            # Viene de otra instancia (p. ej. el botón DETENER de Control Deck): sin ventana
+            # Viene de otra instancia (p. ej. el botón DETENER de Gaming Deck): sin ventana
             if self.ctl.stop(args.stop):
                 cmdline.print_literal(_("Cerrando {0}…").format(args.stop) + "\n")
                 return 0

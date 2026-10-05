@@ -35,7 +35,7 @@ def sync_prefix_name(cfg: Config, g: Game) -> bool:
 
 def prune_prefixes(cfg: Config) -> list[str]:
     """Quita de la lista los prefijos cuya carpeta ya no existe (p. ej. borrados desde
-    Control Deck) y que ningún juego usa. Battle.net y los importados se conservan."""
+    Gaming Deck) y que ningún juego usa. Battle.net y los importados se conservan."""
     used = {g.prefix_id for g in cfg.games}
     gone = [p for p in cfg.prefixes if p.id != BATTLENET_ID and not p.imported
             and p.id not in used and not Path(p.path).exists()]
