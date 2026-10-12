@@ -16,7 +16,7 @@ from collections.abc import Callable
 
 from gi.repository import GLib
 
-from . import battlenet, engines, exeicon, gpu, installers, integration, library, paths, prefixes, runners, running, sgdb, updates, wowconfig
+from . import agent, battlenet, engines, exeicon, gpu, installers, integration, library, paths, prefixes, runners, running, sgdb, updates, wowconfig
 from .config import BATTLENET_ID, Config, Game, Prefix
 from .launcher import GameProcess, State, build, build_native, kill_wineserver, start_deck_session
 from .i18n import _
@@ -42,6 +42,18 @@ class Controller:
         self._icons: dict[str, tuple[Path | None, str]] = {}   # exe -> (png, color)
         self._icon_jobs: set[str] = set()
         self.checking: set[str] = set()   # juegos comprobando versión
+        # Actualizaciones de juegos de Blizzard: ¿hay una nueva? y, si Battle.net la está bajando, su progreso
+        self.update_status: dict[str, updates.UpdateStatus] = {}
+        self.update_progress: dict[str, agent.Progress] = {}
+        self._agent: agent.AgentClient | None = None
+        self._update_check_busy = self._poll_busy = False
+        self._bnet_was_running = False
+        # «Actualizar desde Umbral»: juego → {"opened": Battle.net lo abrió Umbral, "tries", "seen": se vio la descarga}
+        self._direct: dict[str, dict] = {}
+        self._finishing: dict[str, int] = {}     # juego → reintentos que quedan para ver su versión al día
+        GLib.timeout_add_seconds(6, lambda: (self.check_updates(), False)[1])
+        GLib.timeout_add_seconds(15 * 60, lambda: (self.check_updates(), True)[1])
+        GLib.timeout_add_seconds(3, self._poll_agent)
         self.moving: set[str] = set()     # juegos cuyos archivos se están moviendo
         self.installing: set[str] = set() # emuladores instalándose
         self._sessions: dict[str, float] = {}   # juego -> instante desde el que falta sumar tiempo
@@ -417,6 +429,184 @@ class Controller:
                 return False
             GLib.idle_add(done)
         threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------ actualizaciones (Blizzard)
+    def _blizzard_games(self) -> list[Game]:
+        return [g for g in self.cfg.games if g.kind == "blizzard" and g.product and g.exe and not g.hidden]
+
+    def check_updates(self) -> None:
+        """Compara en segundo plano la versión instalada de cada juego de Blizzard con la del servidor
+        oficial (solo lectura, sin abrir Battle.net) y avisa a la biblioteca si algo cambió."""
+        games = self._blizzard_games()
+        if self._update_check_busy or not games:
+            return
+        self._update_check_busy = True
+
+        def work():
+            found = {g.id: updates.check(g.exe, g.product) for g in games}
+
+            def done():
+                def key(st):
+                    return (st.state, st.remote) if st else None
+                self._update_check_busy = False
+                changed = [gid for gid, st in found.items() if key(st) != key(self.update_status.get(gid))]
+                self.update_status.update(found)
+                retry = False
+                for gid in list(self._finishing):           # acababa una descarga: ¿quedó al día?
+                    g, st = self.cfg.game(gid), found.get(gid)
+                    if g is not None and st is not None and st.state == "ok":
+                        del self._finishing[gid]
+                        integration.notify(_('{0} actualizado').format(g.name), st.local)
+                        self._direct_finished(gid, True)
+                    elif self._finishing[gid] > 0 and g is not None:
+                        self._finishing[gid] -= 1           # Battle.net escribe .build.info unos segundos después
+                        retry = True
+                    else:
+                        del self._finishing[gid]            # cancelada o sin terminar: se deja como está
+                        self._direct_finished(gid, False)
+                if retry:
+                    GLib.timeout_add_seconds(10, lambda: (self.check_updates(), False)[1])
+                if changed:
+                    self.emit("updates", changed)
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------ actualizar desde Umbral (experimental)
+    def can_update_direct(self, g: Game) -> bool:
+        """Solo si Umbral ya vio una versión nueva y el juego no está en marcha ni actualizándose."""
+        st = self.update_status.get(g.id)
+        return (g.kind == "blizzard" and bool(g.product) and bool(st and st.state == "update")
+                and g.id not in self.update_progress and g.id not in self._direct and not self.is_running(g.id))
+
+    def direct_active(self) -> bool:
+        return bool(self._direct)
+
+    def direct_pending(self, game_id: str) -> bool:
+        """Se ha pedido la actualización y aún no se ve la descarga (Battle.net arrancando, etc.)."""
+        return game_id in self._direct and game_id not in self.update_progress
+
+    def update_direct(self, game_id: str) -> None:
+        """Abre Battle.net si hace falta, le pide la actualización a su Agent y deja que la barra de la
+        tarjeta muestre el avance. Al terminar cierra Battle.net si lo abrió Umbral."""
+        g = self.cfg.game(game_id)
+        if g is None or not self.can_update_direct(g):
+            self.error(_("Este juego no tiene una actualización pendiente que Umbral pueda pedir."))
+            return
+        if not self.battlenet_ready():
+            self.error(_("Battle.net no está instalado en el prefijo. Usa el asistente."))
+            return
+        opened = not self.is_running(BATTLENET_ID)
+        self._direct[game_id] = {"opened": opened, "tries": 0, "seen": False}
+        self.emit("toast", _("Actualizando «{0}» desde Umbral: Battle.net se abrirá un momento…").format(g.name)
+                  if opened else _("Pidiendo la actualización de «{0}»…").format(g.name))
+        if opened:
+            self.launch_game(BATTLENET_ID)
+        self.emit("updates", [game_id])
+        GLib.timeout_add_seconds(2, lambda: (self._direct_request(game_id), False)[1])
+
+    def _direct_fail(self, game_id: str, msg: str) -> None:
+        info = self._direct.pop(game_id, None)
+        self.error(msg)
+        self.emit("updates", [game_id])
+        if info and info["opened"]:
+            self.emit("toast", _("Battle.net se queda abierto: puedes actualizar desde su ventana."))
+
+    def _direct_request(self, game_id: str) -> None:
+        info, g = self._direct.get(game_id), self.cfg.game(game_id)
+        if info is None or g is None:
+            return
+        bnet = self.cfg.battlenet_prefix()
+        if bnet is None or not self.is_running(BATTLENET_ID):
+            info["tries"] += 1
+            if info["tries"] > 15:                    # Battle.net no llegó a arrancar
+                self._direct_fail(game_id, _("Battle.net no se abrió: no se pudo pedir la actualización."))
+                return
+            GLib.timeout_add_seconds(2, lambda: (self._direct_request(game_id), False)[1])
+            return
+        if self._agent is None or self._agent.prefix_path != bnet.path:
+            self._agent = agent.AgentClient(bnet.path)
+        client = self._agent
+
+        def work():
+            ok = client.request_update(g.product)
+
+            def done():
+                info["tries"] += 1
+                if ok is None and info["tries"] <= 45:        # el Agent aún no está listo: se reintenta
+                    GLib.timeout_add_seconds(2, lambda: (self._direct_request(game_id), False)[1])
+                elif ok:
+                    # el seguimiento lo hace _poll_agent; si en 40 s no se ve ninguna descarga, no empezó
+                    GLib.timeout_add_seconds(40, lambda: (self._direct_started(game_id), False)[1])
+                else:
+                    self._direct_fail(game_id, _("El Agent de Battle.net no aceptó la actualización de «{0}»: "
+                                                 "hazla desde Battle.net.").format(g.name))
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _direct_started(self, game_id: str) -> None:
+        info = self._direct.get(game_id)
+        if info is not None and not info["seen"] and game_id not in self.update_progress:
+            self.check_updates()                       # tal vez ya estaba al día o terminó al instante
+            self._direct.pop(game_id, None)
+            self._finishing.pop(game_id, None)
+            self.emit("updates", [game_id])
+
+    def _direct_finished(self, game_id: str, ok: bool) -> None:
+        """La descarga acabó. Si Umbral abrió Battle.net solo para esto y no hay nada más en curso, lo cierra."""
+        info = self._direct.pop(game_id, None)
+        if info is None:
+            return
+        busy = bool(self.update_progress or self._direct) or any(
+            self.is_running(x.id) for x in self.cfg.games if x.kind == "blizzard")
+        if ok and info["opened"] and not busy:
+            self.emit("toast", _("Actualización terminada: cerrando Battle.net."))
+            self.stop(BATTLENET_ID)
+        elif not ok:
+            self.emit("toast", _("La actualización no terminó: revisa Battle.net."))
+
+    def _poll_agent(self) -> bool:
+        """Mientras Battle.net está abierto, pregunta al Agent cuánto lleva cada actualización."""
+        running = self.is_running(BATTLENET_ID)
+        if running != self._bnet_was_running:
+            self._bnet_was_running = running
+            if not running:
+                self._agent = None                    # el Agent se va con Battle.net
+                if self.update_progress:
+                    gone = list(self.update_progress)
+                    self.update_progress.clear()
+                    self.emit("progress", gone)
+                self.check_updates()
+        bnet = self.cfg.battlenet_prefix()
+        games = self._blizzard_games()
+        if not running or bnet is None or not games or self._poll_busy:
+            return True
+        if self._agent is None or self._agent.prefix_path != bnet.path:
+            self._agent = agent.AgentClient(bnet.path)
+        client, self._poll_busy = self._agent, True
+
+        def work():
+            now = {g.id: p for g in games if (p := client.progress(g.product)) is not None}
+
+            def done():
+                self._poll_busy = False
+                before, self.update_progress = self.update_progress, now
+                for gid in now:
+                    if gid in self._direct:
+                        self._direct[gid]["seen"] = True
+                changed = [gid for gid in {*before, *now} if before.get(gid) != now.get(gid)]
+                if changed:
+                    self.emit("progress", changed)
+                finished = set(before) - set(now)           # terminó (o se canceló): se vuelve a comprobar
+                if finished:
+                    for gid in finished:
+                        self._finishing[gid] = 6            # hasta ~1 min esperando a que figure al día
+                    GLib.timeout_add_seconds(2, lambda: (self.check_updates(), False)[1])
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+        return True
 
     def stop(self, key: str) -> bool:
         """Cierra un juego en marcha (botón Detener, `umbral --stop`). False si no estaba abierto."""

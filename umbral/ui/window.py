@@ -7,7 +7,7 @@ from pathlib import Path
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
-from .. import APP_NAME, battlenet, engines, exeicon, installers, integration, playtime, prefixes
+from .. import APP_NAME, agent, battlenet, engines, exeicon, installers, integration, playtime, prefixes
 from ..config import BATTLENET_ID, Game
 from ..controller import Controller
 from ..launcher import State
@@ -50,6 +50,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._iconless: set[str] = set()                   # tarjetas esperando a que se extraiga su icono
         self._mine: dict[str, Game] = {}                   # juegos de «Mis juegos y programas»
         self._folded: dict[str, str] = {}                  # nombre sin tildes, para buscar
+        self._bars: dict[str, tuple[Gtk.ProgressBar, Gtk.Label]] = {}   # barras de actualización visibles
         self._hero_widget: Gtk.Widget | None = None
         self._mine_flow: Gtk.FlowBox | None = None
         self._rebuild_queued = self._icons_queued = False
@@ -123,6 +124,12 @@ class MainWindow(Adw.ApplicationWindow):
         elif ev == "played":
             for key in a[0]:
                 self._refresh_game(key)
+        elif ev == "updates":                         # hay (o ya no hay) una actualización disponible
+            for key in a[0]:
+                self._refresh_game(key)
+        elif ev == "progress":                        # Battle.net está descargando: la barra avanza
+            for key in a[0]:
+                self._update_bar(key)
         elif ev == "log":
             key, line = a
             if key == self.console_key:
@@ -136,7 +143,8 @@ class MainWindow(Adw.ApplicationWindow):
         elif ev == "show_log":
             self._show_console(a[0])
         elif ev == "game_started":
-            self._minimize_for_game()
+            if not self.ctl.direct_active():          # actualizando desde Umbral: se queda a la vista (la barra)
+                self._minimize_for_game()
         elif ev == "installed_candidates":
             self._installed_dialog(*a)
 
@@ -192,6 +200,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._search_entry = self._mine_flow = None    # se recrean con «Mis juegos y programas»
         self._cards.clear()
         self._iconless.clear()
+        self._bars.clear()
         self._hero_widget = self._top_banner()
         self.library_box.append(self._hero_widget)
         games = [g for g in self.ctl.cfg.games if g.id != BATTLENET_ID and not g.hidden]
@@ -230,6 +239,15 @@ class MainWindow(Adw.ApplicationWindow):
                     self._refresh_game(gid)
             return False
         GLib.timeout_add(150, run)
+
+    def _update_bar(self, gid: str):
+        """La barra ya visible avanza sin rehacer la tarjeta; si aparece o desaparece, se repinta."""
+        p, bar = self.ctl.update_progress.get(gid), self._bars.get(gid)
+        if p is not None and bar is not None:
+            bar[0].set_fraction(p.fraction)
+            bar[1].set_label(agent.describe(p))
+        else:
+            self._refresh_game(gid)
 
     def _refresh_game(self, gid: str):
         """Repinta solo lo que muestra ese juego: su tarjeta o, si es Battle.net, el banner."""
@@ -615,14 +633,33 @@ class MainWindow(Adw.ApplicationWindow):
                               css_classes=["caption", "dim-label"], ellipsize=3, hexpand=True))
         if st and st != State.EXITED:
             meta.append(Gtk.Label(label=st, css_classes=["status-chip", CHIP.get(st, "")]))
+        progress = self.ctl.update_progress.get(g.id) if g.kind == "blizzard" else None
+        stale = self.ctl.update_status.get(g.id) if g.kind == "blizzard" else None
+        needs_update = bool(stale and stale.state == "update" and progress is None)
+        if needs_update and not running:
+            chip = Gtk.Label(label=_("Actualización disponible"), css_classes=["status-chip", "starting"])
+            chip.set_tooltip_text(f"{stale.local or '?'} → {stale.remote or '?'}")
+            meta.append(chip)
         info.append(meta)
 
         actions = Gtk.Box(spacing=6)
         play = Gtk.Button(css_classes=["pill-play"] + (["destructive-action"] if running else ["suggested-action"]),
                           hexpand=True)
-        play.set_child(Adw.ButtonContent(icon_name="media-playback-stop-symbolic" if running
-                                         else "media-playback-start-symbolic",
-                                         label=_("Detener") if running else _("Jugar")))
+        if progress is not None:
+            icon, label = "emblem-synchronizing-symbolic", _("Actualizando…")
+            play.set_sensitive(False)
+            play.set_tooltip_text(_("Battle.net está descargando la actualización"))
+        elif self.ctl.direct_pending(g.id):
+            icon, label = "emblem-synchronizing-symbolic", _("Preparando…")
+            play.set_sensitive(False)
+            play.set_tooltip_text(_("Umbral le está pidiendo la actualización al Agent de Battle.net"))
+        elif needs_update and not running:
+            icon, label = "software-update-available-symbolic", _("Actualizar juego")
+            play.set_tooltip_text(_("Hay una versión nueva: se abrirá Battle.net para actualizar"))
+        else:
+            icon = "media-playback-stop-symbolic" if running else "media-playback-start-symbolic"
+            label = _("Detener") if running else _("Jugar")
+        play.set_child(Adw.ButtonContent(icon_name=icon, label=label))
         if g.id in self.ctl.external:
             play.set_tooltip_text(_("Abierto a través de Battle.net: «Detener» cierra solo el juego"))
         play.connect("clicked", lambda *_a: self.ctl.stop(g.id) if running else self.ctl.launch_game(g.id))
@@ -633,6 +670,8 @@ class MainWindow(Adw.ApplicationWindow):
         actions.append(gear)
         m = Gio.Menu()
         m.append(_("Abrir carpeta del juego"), f"win.game-folder::{g.id}")
+        if self.ctl.can_update_direct(g):
+            m.append(_("Actualizar desde Umbral (experimental)"), f"win.update-direct::{g.id}")
         if g.kind not in engines.NATIVE_KINDS and g.kind != "battlenet" and integration.crisol_bin():
             m.append(_("Mods (Crisol)"), f"win.crisol::{g.id}")
         m.append(_('Ver registro'), f"win.game-log::{g.id}")
@@ -652,6 +691,15 @@ class MainWindow(Adw.ApplicationWindow):
         actions.append(Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=m,
                                       css_classes=["flat", "circular"], valign=Gtk.Align.CENTER))
         info.append(actions)
+        if progress is not None:                       # barra de progreso bajo «Jugar»
+            bar = Gtk.ProgressBar(fraction=progress.fraction, css_classes=["update-bar"])
+            text = Gtk.Label(label=agent.describe(progress), xalign=0, css_classes=["caption", "dim-label"],
+                             ellipsize=3, max_width_chars=1, hexpand=True)
+            info.append(bar)
+            info.append(text)
+            self._bars[g.id] = (bar, text)
+        else:
+            self._bars.pop(g.id, None)
         card.append(info)
         return card
 
@@ -772,6 +820,7 @@ class MainWindow(Adw.ApplicationWindow):
         act("game-remove", self._remove_game, True)
         act("game-move", self._move_game, True)
         act("game-folder", self._open_game_folder, True)
+        act("update-direct", self.ctl.update_direct, True)
         act("crisol", integration.open_in_crisol, True)
         act("wtf-backup", lambda gid: self.ctl.backup_wtf(gid), True)
         act("wtf-restore", self._restore_wtf, True)
