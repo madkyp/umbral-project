@@ -4,8 +4,9 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest import mock
 
-from umbral import agent
+from umbral import agent, i18n
 
 KEY = "3103964883244563063"
 # Respuesta real del Agent a las 13:05:19 del 2026-10-12, mientras actualizaba WoW Forever
@@ -74,6 +75,7 @@ class TestParse(unittest.TestCase):
         p = agent.parse_update({**UPDATING, "download_rate": 0, "estimated_time_in_sec": 768079})
         self.assertEqual(p.eta, 0)
 
+    @mock.patch.object(i18n, "LANG", "es")
     def test_text_under_the_bar(self):
         self.assertEqual(agent.describe(agent.Progress(0.0)), "Preparando la actualización…")
         self.assertEqual(agent.describe(agent.Progress(0.96, 0, 0, 0)), "Aplicando la actualización… 96 %")
