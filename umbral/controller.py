@@ -25,9 +25,13 @@ log = logging.getLogger(__name__)
 MAX_LOG_LINES = 4000
 
 
+# Ventana de Battle.net: Proton le pone la clase genérica de todos los juegos, así que se distingue por el título
+BATTLENET_WINDOW = (r"^steam_app_default$", r"^Battle\.net$")
+
 class Controller:
     def __init__(self, debug: bool = False):
         self.debug = debug
+        self.notify_errors = False          # True cuando Umbral se abre solo para ejecutar un programa
         self.cfg = Config.load()
         self.report: gpu.GpuReport | None = None
         self.runners: list[runners.Runner] = runners.discover()
@@ -77,6 +81,8 @@ class Controller:
 
     def error(self, msg: str) -> None:
         log.error(msg)
+        if self.notify_errors:                     # sin ventana abierta nadie vería el aviso
+            integration.notify("Umbral", msg)
         self.emit("error", msg)
 
     def save(self) -> None:
@@ -404,6 +410,24 @@ class Controller:
                 threading.Thread(target=work, daemon=True).start()
         self.run(game_id, game.prefix_id, exe, args, game, on_exit=on_exit)
 
+    ADHOC_NAME = "Programas sueltos"          # prefijo compartido; su id sale de create_prefix
+
+    def run_adhoc(self, path: str, on_exit: Callable[[int | None], None] | None = None) -> bool:
+        """Ejecuta un .exe/.msi/.bat suelto (p. ej. «Abrir con Umbral») sin añadirlo a la biblioteca.
+        Todos comparten el prefijo «Programas sueltos». True si se lanzó."""
+        p = Path(path).expanduser()
+        if p.suffix.lower() not in engines.WINDOWS_EXTS or not p.is_file():
+            self.error(_('Umbral solo ejecuta archivos .exe, .msi o .bat existentes: {0}').format(p.name))
+            return False
+        prefix = next((x for x in self.cfg.prefixes if x.name == self.ADHOC_NAME), None)
+        if prefix is None:
+            prefix = self.create_prefix(self.ADHOC_NAME, self.cfg.settings.default_runner)
+        key = f"adhoc:{p.name}"
+        if self.is_running(key):
+            self.error(_('{0} ya está en ejecución.').format(p.name))
+            return False
+        return self.run(key, prefix.id, str(p), None, None, on_exit=on_exit) is not None
+
     def _check_then_launch(self, game: Game) -> None:
         """Comprueba la versión sin abrir Battle.net; si está al día, lanza el .exe."""
         self.checking.add(game.id)
@@ -415,12 +439,19 @@ class Controller:
             def done():
                 self.checking.discard(game.id)
                 if st.state == "update":
-                    # Versión distinta: se abre Battle.net para que actualice
-                    msg = (_('{0}: tienes la {1} y hay la {2}. Abriendo Battle.net para actualizar…').format(game.name, st.local or '?', st.remote or '?'))
-                    self.emit("toast", msg)
-                    integration.notify(_('Actualización disponible'), msg)
-                    if not self.is_running(BATTLENET_ID):
-                        self.launch_game(BATTLENET_ID)
+                    self.update_status[game.id] = st
+                    if self.can_update_direct(game) and self.battlenet_ready():
+                        # Umbral se la pide al Agent de Battle.net, que se abre oculto: sin ventana
+                        integration.notify(_('Actualización disponible'), _('{0}: tienes la {1} y hay la {2}. Actualizando…').format(
+                            game.name, st.local or '?', st.remote or '?'))
+                        self.update_direct(game.id)
+                    else:
+                        # No se puede pedir desde Umbral: se abre Battle.net para que actualice él
+                        msg = (_('{0}: tienes la {1} y hay la {2}. Abriendo Battle.net para actualizar…').format(game.name, st.local or '?', st.remote or '?'))
+                        self.emit("toast", msg)
+                        integration.notify(_('Actualización disponible'), msg)
+                        if not self.is_running(BATTLENET_ID):
+                            self.launch_game(BATTLENET_ID)
                 else:
                     if st.state == "unknown":
                         self.emit("toast", _('No se pudo comprobar la versión ({0}); se lanza igualmente').format(st.reason))
@@ -501,6 +532,7 @@ class Controller:
         self.emit("toast", _("Actualizando «{0}» desde Umbral: Battle.net se abrirá un momento…").format(g.name)
                   if opened else _("Pidiendo la actualización de «{0}»…").format(g.name))
         if opened:
+            integration.hyprland_hide_windows(*BATTLENET_WINDOW)      # que Battle.net no se vea ni robe el foco
             self.launch_game(BATTLENET_ID)
         self.emit("updates", [game_id])
         GLib.timeout_add_seconds(2, lambda: (self._direct_request(game_id), False)[1])

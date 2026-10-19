@@ -142,6 +142,25 @@ def hyprland_float_rule(app_id: str, width: int, height: int) -> tuple[bool, str
     return r.returncode == 0 and out == "ok", out
 
 
+def hyprland_hide_windows(class_rx: str, title_rx: str, seconds: int = 120) -> tuple[bool, str]:
+    """Las ventanas nuevas cuya clase y título encajen con `class_rx` y `title_rx` se abren en un
+    workspace especial de Hyprland, sin robar el foco ni mostrarse. Es una regla en tiempo de
+    ejecución (no toca la configuración) y se desactiva sola pasados `seconds` segundos, para que
+    Battle.net vuelva a verse con normalidad si lo abres tú después."""
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or not shutil.which("hyprctl"):
+        return False, _('no es Hyprland')
+    lua = (f'(function() local r = hl.window_rule({{ name = "umbral-hidden", '
+           f'match = {{ class = "{_lq(class_rx)}", title = "{_lq(title_rx)}" }}, '
+           f'workspace = "special:umbral silent" }}) r:set_enabled(true) '
+           f'hl.timer(function() r:set_enabled(false) end, {{ timeout = {int(seconds) * 1000}, type = "oneshot" }}) '
+           f'return "ok" end)()')
+    try:
+        r = subprocess.run(["hyprctl", "eval", lua], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, str(e)
+    out = (r.stdout + r.stderr).strip()
+    return r.returncode == 0 and out == "ok", out
+
 # ---------------------------------------------------------------- Crisol (gestor de mods)
 
 def crisol_bin() -> str | None:

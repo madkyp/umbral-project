@@ -34,6 +34,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(prog="umbral", description=_('{0}: lanzador de Battle.net para Linux').format(APP_NAME))
     ap.add_argument("--debug", action="store_true", help=_('registro detallado (GPU, entorno, PROTON_LOG)'))
     ap.add_argument("--launch", metavar="ID", help=_('lanzar un juego de la biblioteca (p. ej. battlenet)'))
+    ap.add_argument("--run", metavar="ARCHIVO", help=_('ejecutar un .exe, .msi o .bat sin añadirlo a la biblioteca'))
+    ap.add_argument("files", nargs="*", metavar="ARCHIVO", help=_('programas de Windows a ejecutar («Abrir con Umbral»)'))
     ap.add_argument("--check", action="store_true", help=_('diagnóstico en terminal, sin interfaz'))
     ap.add_argument("--stop", metavar="ID", help=_("cerrar un juego en marcha (sin abrir la ventana)"))
     ap.add_argument("--set", nargs="+", metavar="ID CLAVE=VALOR",
@@ -112,10 +114,40 @@ class UmbralApp(Adw.Application):
                 return 0
             cmdline.printerr_literal(_("«{0}» no está en marcha.").format(args.stop) + "\n")
             return 1
+        programs = ([args.run] if args.run else []) + args.files
+        if programs:
+            self._run_programs(programs, cmdline.get_cwd())
+            return 0
         self.activate()
         if args.launch:
             GLib.idle_add(lambda: (self.ctl.launch_game(args.launch), False)[1])
         return 0
+
+    def _run_programs(self, programs: list[str], cwd: str | None) -> None:
+        """«Abrir con Umbral»: ejecuta cada programa sin abrir la ventana. Si Umbral no estaba abierta,
+        se cierra sola cuando termina el último; los errores salen como notificación."""
+        standalone = self.win is None
+        self.ctl.notify_errors = standalone
+        pending = [0]
+        self.hold()
+
+        def done(_code=None):
+            pending[0] -= 1
+            if pending[0] <= 0:
+                self.release()
+                if standalone:
+                    self.ctl.notify_errors = False
+
+        for prog in programs:
+            path = Path(prog)
+            if not path.is_absolute() and cwd:
+                path = Path(cwd) / path
+            pending[0] += 1
+            if not self.ctl.run_adhoc(str(path), on_exit=done):
+                pending[0] -= 1
+        if pending[0] <= 0:
+            pending[0] = 1
+            done()
 
     def _startup(self, debug: bool):
         from .controller import Controller

@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.15.0](https://img.shields.io/badge/version-0.15.0-informational)
+![Version 0.16.0](https://img.shields.io/badge/version-0.16.0-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -39,14 +39,17 @@ When you press **Play** on a Blizzard game:
 | Situation | What Umbral does |
 |---|---|
 | Your build matches the one Blizzard publishes | Launches the game **directly** — Battle.net doesn't open and uses no RAM |
-| A new version is out | Tells you (*"you have X, Y is available"*) and **opens Battle.net** so it can update |
+| A new version is out | Tells you (*"you have X, Y is available"*) and **updates it for you**: Umbral asks Battle.net's Agent for the patch with Battle.net **hidden** (see below). If that isn't possible it opens Battle.net so it can update |
 | The version server can't be reached | Warns you and launches anyway |
 
 The check compares the build in the game's `.build.info` with Blizzard's official version server (`https://<region>.version.battle.net/v2/products/<product>/versions`). In direct mode you sign in on the game's own login screen.
 
 **Updates at a glance**: in the background (on start, every 15 minutes and when Battle.net closes) Umbral compares each installed Blizzard game with Blizzard's version server — read-only, without opening Battle.net — and the card shows *Update available* with an **Update game** button. While Battle.net downloads a patch, the card shows a **progress bar** under the button (*"Updating 42 % · 12.3 MB/s · 8 min"*) and a notification when the game is up to date. The progress comes from the Agent — the program that actually downloads for Battle.net — which Umbral finds on its local port with a `GET` request.
 
-**Update from Umbral (experimental)**, in the card's ⋮ menu when a new version is pending: Umbral opens Battle.net if it isn't running, asks its Agent to update that game — the same `POST /update` Battle.net sends when you press its button — shows the progress bar, and closes Battle.net afterwards if it was the one that opened it. Battle.net's window still appears (the Agent can't be started on its own: its session key is handed to Battle.net through an internal channel, and with no client connected it shuts itself down after ~20 s). It is only offered when a pending update was detected, and it is the only request Umbral ever sends to the Agent.
+**Update from Umbral (experimental)** — also what **Play** does when a new version is out: Umbral opens Battle.net if it isn't running, asks its Agent to update that game — the same `POST /update` Battle.net sends when you press its button — shows the progress bar, and closes Battle.net afterwards if it was the one that opened it. The Agent can't be started on its own (its session key is handed to Battle.net through an internal channel, and with no client connected it shuts itself down after ~20 s), so Battle.net does run, but on **Hyprland** Umbral opens its window hidden in a special workspace (a runtime window rule, your config isn't touched) and you never see it. On other desktops its window appears for the duration of the update. It is only offered when a pending update was detected, and it is the only request Umbral ever sends to the Agent.
+
+### 🪟 Open any Windows program without adding it
+`umbral --run setup.exe` (or just `umbral setup.exe`, or **Open with → Umbral** in your file manager) runs a `.exe`, `.msi` or `.bat` in a shared *Programas sueltos* prefix, with no window and nothing added to your library. Umbral closes by itself when the program ends if it wasn't already open; errors come as desktop notifications.
 
 ### 📚 Two libraries
 - **Battle.net library** — games installed from Battle.net appear by themselves (read from Battle.net's `product.db`, with a folder-scan fallback) and disappear when they are uninstalled or the prefix is deleted.
