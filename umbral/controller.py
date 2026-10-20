@@ -275,7 +275,8 @@ class Controller:
                 return None
         try:
             plan = build_native(self.cfg, game, self.report) if native else \
-                build(self.cfg, prefix, exe, args, game, self.report, self.debug, self.runners)
+                build(self.cfg, prefix, exe, args, game, self.report, self.debug, self.runners,
+                      shared=self._others_in_prefix(key, prefix.path))
         except (LookupError, FileNotFoundError) as e:
             self.error(str(e))
             return None
@@ -708,12 +709,19 @@ class Controller:
         threading.Thread(target=work, daemon=True).start()
         return True
 
+    def _others_in_prefix(self, key: str, prefix_path: str) -> bool:
+        """¿Hay otro programa de Umbral en marcha en el mismo prefijo (p. ej. Battle.net con el juego)?"""
+        return bool(prefix_path) and any(k != key and q.running() and q.prefix_path == prefix_path
+                                         for k, q in self.procs.items())
+
     def stop(self, key: str) -> bool:
         """Cierra un juego en marcha (botón Detener, `umbral --stop`). False si no estaba abierto."""
         p = self.procs.get(key)
         g = self.cfg.game(key)
         if p and p.running():
-            threading.Thread(target=p.stop, kwargs={"exe": g.exe if g else ""}, daemon=True).start()
+            threading.Thread(target=p.stop, kwargs={"exe": g.exe if g else "",
+                                                    "shared": self._others_in_prefix(key, p.prefix_path)},
+                             daemon=True).start()
             return True
         entry = next((e for e in self._running_entries() if e["id"] == key), None)
         if entry is None:

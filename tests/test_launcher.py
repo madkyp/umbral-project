@@ -42,6 +42,12 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(e["PROTON_LOCAL_SHADER_CACHE"], "1")
         self.assertNotIn("PROTON_LOG", e)
 
+    def test_shared_prefix_starts_without_waiting_for_the_wineserver(self):
+        """Con otro programa en el prefijo (Battle.net) el verbo por defecto de Proton no arrancaba nada."""
+        self.assertNotIn("PROTON_VERB", launcher.build(self.cfg, self.bnet, "C:/x/a.exe", runners=[self.r]).env)
+        plan = launcher.build(self.cfg, self.bnet, "C:/x/a.exe", runners=[self.r], shared=True)
+        self.assertEqual(plan.env["PROTON_VERB"], "run")
+
     def test_debug_and_user_env_wins(self):
         self.bnet.options = LaunchOptions(env={"WINE_SIMULATE_WRITECOPY": "0", "FOO": "1"})
         plan = launcher.build(self.cfg, self.bnet, "a.exe", debug=True, runners=[self.r])

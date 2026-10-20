@@ -198,7 +198,8 @@ def _flag(v: bool | None) -> str:
 
 def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
           game: Game | None = None, report: gpumod.GpuReport | None = None,
-          debug: bool = False, runners: list[Runner] | None = None) -> LaunchPlan:
+          debug: bool = False, runners: list[Runner] | None = None, shared: bool = False) -> LaunchPlan:
+    """`shared`: ya hay otro programa en marcha en este prefijo (p. ej. Battle.net)."""
     opts = effective_options(cfg, prefix, game)
     runner = resolve(opts.runner or prefix.runner or cfg.settings.default_runner, runners)
     if runner is None:
@@ -210,6 +211,10 @@ def build(cfg: Config, prefix: Prefix, exe: str, args: list[str] | None = None,
         if not shutil.which("umu-run"):
             raise FileNotFoundError(_('umu-run no está instalado: sudo pacman -S umu-launcher'))
         env.update({"PROTONPATH": str(runner.path), "GAMEID": "umu-default"})
+        if shared:
+            # El verbo por defecto (waitforexitandrun) espera a que acabe el wineserver del prefijo antes
+            # de arrancar: con Battle.net abierto el juego no llegaba a abrirse. «run» arranca ya.
+            env["PROTON_VERB"] = "run"
         if opts.use_wined3d is not None:
             env["PROTON_USE_WINED3D"] = _flag(opts.use_wined3d)
         if opts.no_esync is not None:
@@ -409,7 +414,7 @@ class GameProcess:
     def running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
-    def stop(self, timeout: float = 8.0, exe: str = "") -> None:
+    def stop(self, timeout: float = 8.0, exe: str = "", shared: bool = False) -> None:
         """Cierre ordenado: primero el .exe del juego; si no responde, wineserver -k del
         prefijo; por último SIGTERM/SIGKILL al grupo del lanzador."""
         if not self.running():
@@ -424,10 +429,11 @@ class GameProcess:
         running.stop_game({"pid": self.proc.pid, "pid_starttime": running.starttime(self.proc.pid),
                            "game_pids": [{"pid": p, "starttime": running.starttime(p)} for p in game_pids],
                            "proton_path": str(self.plan.runner.path) if self.plan.runner.kind == "proton" else "",
-                           "prefix": self.prefix_path, "launched_by": "umbral"}, timeout)
+                           "prefix": self.prefix_path, "launched_by": "umbral", "shared": shared}, timeout)
         if not self.running():
             return
-        kill_wineserver(self.plan.runner, self.prefix_path)
+        if not shared:                      # con otro programa en el prefijo (Battle.net), wineserver -k lo cerraría también
+            kill_wineserver(self.plan.runner, self.prefix_path)
         deadline = time.monotonic() + timeout
         for sig in (signal.SIGTERM, signal.SIGKILL):
             try:

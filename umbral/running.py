@@ -177,16 +177,18 @@ def stop_game(game: dict, timeout: float = 8.0) -> bool:
     """Cierre ordenado: primero el .exe del juego (SIGTERM); si no responde, `wineserver -k`
     del prefijo (que cerraría también Battle.net si está en el mismo prefijo) y por último
     el lanzador. Devuelve True si al final ya no queda nada en marcha."""
+    shared = bool(game.get("shared"))      # otro programa en el mismo prefijo: no se mata el wineserver
     gp = [(int(x["pid"]), x.get("starttime")) for x in game.get("game_pids", [])]
     gp = [(p, s) for p, s in gp if alive(p, s)]
     root = (int(game.get("pid", 0)), game.get("pid_starttime"))
     if gp:
         _signal_all([p for p, _s in gp], signal.SIGTERM)
         if not _wait_gone(gp, timeout):
-            wineserver_kill(game.get("proton_path", ""), game.get("prefix", ""))
+            if not shared:
+                wineserver_kill(game.get("proton_path", ""), game.get("prefix", ""))
             if not _wait_gone(gp, 3):
                 _signal_all([p for p, _s in gp], signal.SIGKILL)
-    elif alive(*root) and game.get("launched_by") == "umbral":
+    elif alive(*root) and game.get("launched_by") == "umbral" and not shared:
         wineserver_kill(game.get("proton_path", ""), game.get("prefix", ""))
     # el lanzador (umu-run) termina solo al cerrarse el juego; si no, se le ayuda
     if root[0] and game.get("launched_by") == "umbral" and alive(*root) and not _wait_gone([root], 5):
