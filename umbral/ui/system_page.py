@@ -61,6 +61,18 @@ class SystemPage(Adw.PreferencesPage):
         accent.add_suffix(btn)
         self._accent_row = accent
         ap.add(accent)
+        from .welcome import THEMES, apply_theme
+        names = [_('Oscuro'), _('Claro')]
+        th = Adw.ComboRow(title=_('Tema'), model=Gtk.StringList.new(names),
+                          selected=THEMES.index(self.ctl.cfg.settings.theme)
+                          if self.ctl.cfg.settings.theme in THEMES else 0)
+
+        def on_theme(row, *_a):
+            self.ctl.cfg.settings.theme = THEMES[row.get_selected()]
+            self.ctl.save()
+            apply_theme(self.ctl.cfg.settings.theme)
+        th.connect("notify::selected", on_theme)
+        ap.add(th)
         fl = Adw.SwitchRow(title=_('Ventana flotante (Hyprland)'),
                            subtitle=_('Flotante y centrada sobre las demás, como un diálogo. Se aplica al reiniciar Umbral; no modifica tu configuración de Hyprland.'),
                            active=self.ctl.cfg.settings.float_window)

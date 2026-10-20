@@ -22,6 +22,11 @@ log = logging.getLogger("umbral")
 def setup_logging(debug: bool) -> Path:
     paths.ensure_dirs()
     logfile = paths.LOG_DIR / "umbral.log"
+    try:                                       # la sesión anterior se conserva: si algo falló, sigue ahí al reabrir
+        if logfile.exists():
+            logfile.replace(logfile.with_name("umbral.anterior.log"))
+    except OSError:
+        pass
     handlers: list[logging.Handler] = [logging.FileHandler(logfile, mode="w")]
     if debug:
         handlers.append(logging.StreamHandler(sys.stderr))
@@ -153,7 +158,6 @@ class UmbralApp(Adw.Application):
         from .controller import Controller
         logfile = setup_logging(debug)
         log.info("%s %s (debug=%s), registro en %s", APP_NAME, VERSION, debug, logfile)
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_DARK)
         display = Gdk.Display.get_default()
         css = Gtk.CssProvider()
         css.load_from_path(str(HERE / "ui" / "style.css"))
@@ -166,6 +170,12 @@ class UmbralApp(Adw.Application):
             if d.is_dir():
                 icons.add_search_path(str(d))
         self.ctl = Controller(debug=debug)
+        st = self.ctl.cfg.settings
+        if st.first_run_done and not st.welcome_done:      # ya usaba Umbral antes de que existiera la bienvenida
+            st.welcome_done = True
+            self.ctl.save()
+        from .ui.welcome import apply_theme
+        apply_theme(st.theme)
         self.connect("shutdown", lambda *_a: self.ctl.flush_playtime())
         self.set_accent(self.ctl.cfg.settings.accent)
         self._start_tray()
@@ -190,7 +200,7 @@ class UmbralApp(Adw.Application):
         for g in self.ctl.cfg.games:
             if g.id != BATTLENET_ID and not g.hidden:
                 items.append((_('Jugar: {0}').format(g.name), lambda gid=g.id: self.ctl.launch_game(gid)))
-        items += [None, (_('Salir de Umbral'), self.quit)]
+        items += [None, (_('Salir de Umbral'), self.quit, "application-exit")]
         self.tray.set_items(items)
 
     def restart(self):
@@ -233,6 +243,9 @@ class UmbralApp(Adw.Application):
             self.win.set_default_size(st.window_width, st.window_height)
             self.win.set_icon_name(APP_ID)
         self.win.present()
+        if not self.ctl.cfg.settings.welcome_done:
+            from .ui.welcome import WelcomeDialog
+            GLib.idle_add(lambda: (WelcomeDialog(self.ctl).present(self.win), False)[1])
 
 
 def main(argv: list[str] | None = None) -> int:

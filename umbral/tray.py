@@ -164,7 +164,7 @@ class Tray:
         invocation.return_value(None)
 
     # ---------------------------------------------------------------- dbusmenu
-    def set_items(self, items: list[tuple[str, Callable[[], None]] | None]) -> None:
+    def set_items(self, items: list[tuple | None]) -> None:
         self.items = items
         self.revision += 1
         if self.bus:
@@ -175,8 +175,11 @@ class Tray:
         it = self.items[idx]
         if it is None:
             return {"type": GLib.Variant("s", "separator"), "visible": GLib.Variant("b", True)}
-        return {"label": GLib.Variant("s", it[0]), "enabled": GLib.Variant("b", True),
-                "visible": GLib.Variant("b", True)}
+        props = {"label": GLib.Variant("s", it[0]), "enabled": GLib.Variant("b", True),
+                 "visible": GLib.Variant("b", True)}
+        if len(it) > 2 and it[2]:             # icono (nombre del tema): KDE reconoce así la acción «Salir»
+            props["icon-name"] = GLib.Variant("s", it[2])
+        return props
 
     def _layout(self):
         children = [GLib.Variant("(ia{sv}av)", (i + 1, self._item_props(i), []))
