@@ -16,7 +16,8 @@ from collections.abc import Callable
 
 from gi.repository import GLib
 
-from . import agent, battlenet, engines, exeicon, gpu, installers, integration, library, paths, prefixes, runners, running, sgdb, updates, wowconfig
+from . import agent, battlenet, engines, exeicon, gpu, installers, integration, library, paths, prefixes, runners, running, selfupdate, sgdb, updates, wowconfig
+from . import VERSION
 from .config import BATTLENET_ID, Config, Game, Prefix
 from .launcher import GameProcess, State, build, build_native, kill_wineserver, start_deck_session
 from .i18n import _
@@ -56,6 +57,13 @@ class Controller:
         self._direct: dict[str, dict] = {}
         self._finishing: dict[str, int] = {}     # juego → reintentos que quedan para ver su versión al día
         GLib.timeout_add_seconds(6, lambda: (self.check_updates(), False)[1])
+        # Actualizar Umbral desde GitHub: versión publicada (si es más nueva) y estado de la actualización en curso
+        self.self_remote = ""
+        self.self_busy = False
+        self.self_msg = ""
+        if selfupdate.installed():
+            GLib.timeout_add_seconds(25, lambda: (self.check_self_update(), False)[1])
+            GLib.timeout_add_seconds(6 * 3600, lambda: (self.check_self_update(), True)[1])
         GLib.timeout_add_seconds(15 * 60, lambda: (self.check_updates(), True)[1])
         GLib.timeout_add_seconds(3, self._poll_agent)
         self.moving: set[str] = set()     # juegos cuyos archivos se están moviendo
@@ -499,6 +507,66 @@ class Controller:
                     GLib.timeout_add_seconds(10, lambda: (self.check_updates(), False)[1])
                 if changed:
                     self.emit("updates", changed)
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------ actualizar Umbral
+    def self_update_available(self) -> bool:
+        return bool(self.self_remote) and selfupdate.is_newer(self.self_remote)
+
+    def check_self_update(self, manual: bool = False) -> None:
+        """Pregunta a GitHub por la última versión (en segundo plano) y avisa a la interfaz."""
+        if self.self_busy:
+            return
+
+        def work():
+            remote = selfupdate.fetch_remote_version()
+
+            def done():
+                if remote:
+                    new = remote != self.self_remote and selfupdate.is_newer(remote)
+                    self.self_remote = remote
+                    if new:
+                        self.emit("toast", _("Hay una versión nueva de Umbral: {0}. Actualízala en Sistema.").format(remote))
+                elif manual:
+                    self.emit("toast", _("No se pudo comprobar si hay una versión nueva de Umbral."))
+                if manual and remote and not selfupdate.is_newer(remote):
+                    self.emit("toast", _("Umbral está al día ({0}).").format(VERSION))
+                self.emit("selfupdate")
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def run_self_update(self) -> None:
+        """git clone + makepkg + pacman -U (con pkexec). Al terminar avisa para reiniciar Umbral."""
+        if self.self_busy or not selfupdate.installed():
+            return
+        self.self_busy = True
+        self.self_msg = _("Descargando…")
+        self.emit("selfupdate")
+
+        def line(text: str):
+            log.info("selfupdate: %s", text)
+
+        def work():
+            err = ""
+            try:
+                pkg = selfupdate.build(line)
+                GLib.idle_add(lambda: (setattr(self, "self_msg", _("Instalando (te pedirá la contraseña)…")),
+                                       self.emit("selfupdate"), False)[2])
+                selfupdate.install(pkg, line)
+            except selfupdate.UpdateError as e:
+                err = str(e)
+
+            def done():
+                self.self_busy = False
+                self.self_msg = ""
+                if err:
+                    self.error(err)
+                else:
+                    self.emit("selfupdate_done")
+                self.emit("selfupdate")
                 return False
             GLib.idle_add(done)
         threading.Thread(target=work, daemon=True).start()

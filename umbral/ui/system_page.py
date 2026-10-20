@@ -33,9 +33,17 @@ class SystemPage(Adw.PreferencesPage):
     def _on_event(self, ev, *a):
         if ev == "system":
             self.rebuild()
+        elif ev == "selfupdate":
+            self._refresh_self_update()
+        elif ev == "selfupdate_done":
+            toast = Adw.Toast(title=_("Umbral actualizada: reinicia para usar la versión nueva"),
+                              button_label=_("Reiniciar ahora"), timeout=0)
+            toast.connect("button-clicked", lambda *_a: self.get_root().get_application().restart())
+            self.get_root().toasts.add_toast(toast)
 
     # ---------------------------------------------------------------- fijo
     def _build_static(self):
+        self._build_self_update()
         hy = Adw.PreferencesGroup(title="Hyprland",
                                   description=_('Umbral no modifica tu configuración: genera un fragmento para que lo revises y lo pegues tú.'))
         row = Adw.ActionRow(use_markup=False, title=_('Fragmento sugerido (Lua)'),
@@ -152,6 +160,42 @@ class SystemPage(Adw.PreferencesPage):
             pg.add(r)
         self._static_paths = pg
 
+    # ---------------------------------------------------------------- actualizar Umbral
+    def _build_self_update(self):
+        from .. import VERSION, selfupdate
+        self._su_group = Adw.PreferencesGroup(title="Umbral")
+        self._su_row = Adw.ActionRow(use_markup=False, title=_("Versión {0}").format(VERSION))
+        self._su_spinner = Adw.Spinner(visible=False)
+        self._su_row.add_suffix(self._su_spinner)
+        self._su_check = Gtk.Button(label=_("Buscar"), valign=Gtk.Align.CENTER, tooltip_text=_("Comprobar si hay una versión nueva"))
+        self._su_check.connect("clicked", lambda *_a: self.ctl.check_self_update(manual=True))
+        self._su_row.add_suffix(self._su_check)
+        self._su_btn = Gtk.Button(label=_("Actualizar"), valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
+        self._su_btn.connect("clicked", lambda *_a: self.ctl.run_self_update())
+        self._su_row.add_suffix(self._su_btn)
+        self._su_group.add(self._su_row)
+        self._su_installed = selfupdate.installed()
+        self._refresh_self_update()
+
+    def _refresh_self_update(self):
+        c = self.ctl
+        busy, new = c.self_busy, c.self_update_available()
+        if not self._su_installed:
+            sub = _("Solo se puede actualizar desde aquí cuando Umbral está instalada como paquete (makepkg -si).")
+        elif busy:
+            sub = c.self_msg
+        elif new:
+            sub = _("Hay una versión nueva: {0}").format(c.self_remote)
+        else:
+            sub = _("Descarga la última versión de GitHub, la construye y la instala (pide tu contraseña).") \
+                if not c.self_remote else _("Estás al día.")
+        self._su_row.set_subtitle(sub)
+        self._su_spinner.set_visible(busy)
+        self._su_check.set_sensitive(self._su_installed and not busy)
+        self._su_check.set_visible(not new or busy)
+        self._su_btn.set_visible(self._su_installed and new and not busy)
+        self._su_btn.set_label(_("Actualizar a {0}").format(c.self_remote) if new else _("Actualizar"))
+
     def _accent_changed(self, btn, *_a):
         c = btn.get_rgba()
         hexc = f"#{int(c.red * 255):02x}{int(c.green * 255):02x}{int(c.blue * 255):02x}"
@@ -169,9 +213,10 @@ class SystemPage(Adw.PreferencesPage):
 
     # ---------------------------------------------------------------- dinámico
     def rebuild(self):
-        for g in self._dynamic + [self._static_hypr, self._static_look, self._static_sgdb, self._static_paths]:
+        for g in self._dynamic + [self._su_group, self._static_hypr, self._static_look, self._static_sgdb, self._static_paths]:
             if g.get_parent():
                 self.remove(g)
+        self.add(self._su_group)
         self._dynamic = [self._gpu_group(), self._runner_group(), self._emulator_group(), self._bios_group()]
         for g in self._dynamic:
             self.add(g)

@@ -3,7 +3,7 @@
 # 閾 Umbral
 
 [![tests](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml/badge.svg)](https://github.com/madkyp/umbral-project/actions/workflows/tests.yml)
-![Version 0.16.1](https://img.shields.io/badge/version-0.16.1-informational)
+![Version 0.17.0](https://img.shields.io/badge/version-0.17.0-informational)
 ![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Arch / CachyOS](https://img.shields.io/badge/Arch%20%2F%20CachyOS-Hyprland-1793d1)
@@ -50,6 +50,9 @@ The check compares the build in the game's `.build.info` with Blizzard's officia
 
 ### 🪟 Open any Windows program without adding it
 `umbral --run setup.exe` (or just `umbral setup.exe`, or **Open with → Umbral** in your file manager) runs a `.exe`, `.msi` or `.bat` in a shared *Programas sueltos* prefix, with no window and nothing added to your library. Umbral closes by itself when the program ends if it wasn't already open; errors come as desktop notifications.
+
+### 🔄 Update Umbral from Umbral
+**System → Umbral** checks GitHub for a newer version (on start and every 6 hours) and offers **Update to X**: it clones the repo to `~/.cache/umbral`, builds the package with `makepkg` as your user and installs it with `pkexec pacman -U` (the only step that asks for your password), then offers to restart. It replaces `git pull && makepkg -sif`. Only available when Umbral is installed as a package; needs `git` and `base-devel`.
 
 ### 📚 Two libraries
 - **Battle.net library** — games installed from Battle.net appear by themselves (read from Battle.net's `product.db`, with a folder-scan fallback) and disappear when they are uninstalled or the prefix is deleted.
