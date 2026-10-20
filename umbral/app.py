@@ -175,7 +175,7 @@ class UmbralApp(Adw.Application):
             st.welcome_done = True
             self.ctl.save()
         from .ui.welcome import apply_theme
-        apply_theme(st.theme)
+        apply_theme(st.theme if st.theme_chosen else "")
         self.connect("shutdown", lambda *_a: self.ctl.flush_playtime())
         self.set_accent(self.ctl.cfg.settings.accent)
         self._start_tray()

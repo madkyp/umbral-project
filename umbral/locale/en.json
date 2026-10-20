@@ -610,6 +610,7 @@
  "{0}: lanzador de Battle.net para Linux": "{0}: Battle.net launcher for Linux",
  "{0}: tienes la {1} y hay la {2}. Abriendo Battle.net para actualizar…": "{0}: you have {1} and {2} is available. Opening Battle.net to update…",
  "{0}: tienes la {1} y hay la {2}. Actualizando…": "{0}: you have {1} and {2} is available. Updating…",
+ "«Sistema» sigue el tema claro u oscuro de tu escritorio.": "“System” follows your desktop's light or dark theme.",
  "«fps_limit» espera un número de 0 (sin límite) a 1000.": "“fps_limit” expects a number from 0 (no limit) to 1000.",
  "«gamescope_resolution» espera ANCHOxALTO (p. ej. 640x480) o screen.": "“gamescope_resolution” expects WIDTHxHEIGHT (e.g. 640x480) or screen.",
  "«gpu» espera auto o los ids PCI vvvv:dddd (p. ej. 10de:1f07).": "“gpu” expects auto or the PCI ids vvvv:dddd (e.g. 10de:1f07).",

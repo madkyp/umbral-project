@@ -7,13 +7,14 @@ from .. import APP_ID
 from ..controller import Controller
 from ..i18n import _
 
-THEMES = ("dark", "light")
+THEMES = ("", "dark", "light")
 
 
 def apply_theme(theme: str) -> None:
-    """Tema de la aplicación: «light» claro, cualquier otra cosa oscuro."""
+    """Tema de la aplicación: «light» claro, «dark» oscuro y vacío el del sistema (oscuro si no dice nada)."""
     Adw.StyleManager.get_default().set_color_scheme(
-        Adw.ColorScheme.FORCE_LIGHT if theme == "light" else Adw.ColorScheme.FORCE_DARK)
+        {"light": Adw.ColorScheme.FORCE_LIGHT, "dark": Adw.ColorScheme.FORCE_DARK}.get(
+            theme, Adw.ColorScheme.PREFER_DARK))
 
 
 class WelcomeDialog(Adw.Dialog):
@@ -38,7 +39,10 @@ class WelcomeDialog(Adw.Dialog):
 
         self._dark = Gtk.ToggleButton(label=_('Oscuro'), css_classes=["pill"])
         self._light = Gtk.ToggleButton(label=_('Claro'), css_classes=["pill"], group=self._dark)
-        (self._light if ctl.cfg.settings.theme == "light" else self._dark).set_active(True)
+        # Sin elección guardada se sigue el sistema; el botón marcado solo refleja cómo se ve ahora
+        st = ctl.cfg.settings
+        light = (st.theme == "light") if st.theme_chosen else not Adw.StyleManager.get_default().get_dark()
+        (self._light if light else self._dark).set_active(True)
         self._dark.connect("toggled", self._on_toggle)
         self._light.connect("toggled", self._on_toggle)
         row = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER, homogeneous=True)
@@ -63,6 +67,7 @@ class WelcomeDialog(Adw.Dialog):
             return
         theme = "light" if btn is self._light else "dark"
         self.ctl.cfg.settings.theme = theme
+        self.ctl.cfg.settings.theme_chosen = True
         apply_theme(theme)             # se ve al momento
 
     def _on_closed(self, *_a):

@@ -117,7 +117,8 @@ class Settings:
     window_height: int = 680
     first_run_done: bool = False
     welcome_done: bool = False   # ya se mostró la ventana de bienvenida
-    theme: str = "dark"          # "dark" o "light"
+    theme: str = ""              # "" = el del sistema (oscuro si no dice nada), "dark" o "light"
+    theme_chosen: bool = False   # el usuario eligió el tema (sin esto se sigue al sistema, sea cual sea `theme`)
     library_filter: str = "all"  # filtro de «Mis juegos»: all, windows, scummvm, sys:<sistema>, other
     library_sort: str = "name"   # orden de «Mis juegos»: name, recent, playtime
 
